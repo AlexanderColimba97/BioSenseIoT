@@ -1,0 +1,28 @@
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# Java
+backend/target/
+backend/.mvn/
+*.class
+
+# Node
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/dist/
+
+# Hardware
+hardware/**/.pio/
+hardware/**/.gcc-flags.json
+
+# Env & Secrets
+.env
+.env.local
+.env.production.local
+.env.development.local
+
+# NO IGNORAR EL SIGUIENTE (Es la guía para otros)
+# !.env.example

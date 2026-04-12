@@ -1,0 +1,94 @@
+apply plugin: 'com.android.application'
+
+// 1. CARGA DINÁMICA DE CREDENCIALES (Seguridad)
+def keystorePropertiesFile = rootProject.file('key.properties')
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    namespace "com.biosense.iot"
+    compileSdk rootProject.ext.compileSdkVersion
+    
+    defaultConfig {
+        applicationId "com.biosense.iot"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        
+        aaptOptions {
+             // Omitir archivos innecesarios para reducir el peso del APK
+             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+
+    // 2. CONFIGURACIÓN DE FIRMA (Certificado alexis2026)
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // Aplicamos la firma de producción definida arriba
+            signingConfig signingConfigs.release
+            
+            // Recomiendo false para tesis para evitar errores de ofuscación de código
+            minifyEnabled false 
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        
+        debug {
+            // El modo debug ahora también usa tu firma para que Google Auth funcione en VS Code
+            signingConfig signingConfigs.release
+        }
+    }
+
+    // Optimización para evitar conflictos con librerías duplicadas
+    packagingOptions {
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    
+    // Testing
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    
+    // Plugins de Capacitor/Cordova
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+// 3. INTEGRACIÓN CON GOOGLE (Login / Notificaciones)
+def servicesJSON = file('google-services.json')
+if (servicesJSON.exists() && servicesJSON.length() > 0) {
+    apply plugin: 'com.google.gms.google-services'
+} else {
+    logger.warn("⚠️ BioSense Alert: google-services.json no encontrado. El Login de Google podría fallar.")
+}
