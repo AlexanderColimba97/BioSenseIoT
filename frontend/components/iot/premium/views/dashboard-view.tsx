@@ -9,11 +9,9 @@ import { DiagnosticResponse } from '@/lib/types'
 import { Clock, RefreshCw, Cpu, PlusCircle, ShieldCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { useSensorData } from '@/hooks/use-sensor-data'
 
 interface DashboardViewProps {
-  data: DiagnosticResponse | null | undefined
-  isLoading: boolean
-  isError: boolean
   onNavigateToProfile?: () => void
   onNavigateToAlerts?: () => void
   onNavigateToRecommendations?: () => void
@@ -32,11 +30,9 @@ function formatTime(timestamp?: string): string {
 }
 
 export function DashboardView({ 
-  data, 
-  isLoading, 
-  isError, 
   onNavigateToProfile 
 }: DashboardViewProps) {
+  const { data, isLoading, isError, isActivated } = useSensorData()
   
   if (isLoading) return <DashboardSkeleton />;
   
@@ -50,7 +46,7 @@ export function DashboardView({
     );
   }
 
-  if (!data) {
+  if (!data && !isActivated) {
     return (
       <div className="p-4 space-y-6 animate-in fade-in duration-700">
         <Card className="border-dashed border-2 bg-primary/5">
@@ -73,6 +69,17 @@ export function DashboardView({
             </Button>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  // Si está activado pero no hay datos aún, mostrar loading
+  if (isActivated && !data) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4">
+        <RefreshCw className="h-12 w-12 text-primary animate-spin" />
+        <h3 className="font-bold text-lg text-slate-800">Conectando con ESP32...</h3>
+        <p className="text-sm text-slate-500">Esperando primeros datos de los sensores MQ4, MQ7 y MQ135.</p>
       </div>
     );
   }

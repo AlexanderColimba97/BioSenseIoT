@@ -5,4 +5,6 @@ import reactor.core.publisher.Mono;
 
 public interface LinkDeviceUseCase {
     Mono<DeviceDomain> execute(String userEmail);
+
+    Mono<DeviceDomain> activateDevice(String userEmail);
 }

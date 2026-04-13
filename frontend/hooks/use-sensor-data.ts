@@ -41,13 +41,24 @@ const fetcher = async (url: string) => {
 }
 
 export function useSensorData() {
-  // Cambiamos el endpoint al de diagnósticos V2
+  // Verificar si el dispositivo está activado
+  const [isActivated, setIsActivated] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('device_activated') === 'true'
+    }
+    return false
+  })
+  
+  // Cambia el refreshInterval basado en si está activado: 2-3 segundos si activado, 10 si no
+  const refreshInterval = isActivated ? 2500 : 10000
+  
   const { data, error, isLoading, mutate } = useSWR<DiagnosticResponse | null>(
     '/api/v2/diagnostics/latest',
     fetcher,
     {
-      refreshInterval: 10000,
-      revalidateOnFocus: true
+      refreshInterval,
+      revalidateOnFocus: true,
+      dedupingInterval: isActivated ? 1000 : 5000 // Evitar duplicados más agresivamente cuando está activado
     }
   )
 
@@ -60,6 +71,7 @@ export function useSensorData() {
     isError: !!error,
     isFallback,
     error,
-    refresh: mutate
+    refresh: mutate,
+    isActivated
   }
 }

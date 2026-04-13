@@ -26,8 +26,21 @@ public class DeviceControllerV2 {
                 .map(device -> ResponseEntity.ok((Object) Map.of(
                         "status", "success",
                         "message", "Dispositivo sincronizado con éxito",
-                        "mac", device.getMacAddress()
-                )))
+                        "mac", device.getMacAddress())))
+                .onErrorResume(e -> Mono.just(ResponseEntity.badRequest().body(Map.of("error", e.getMessage()))));
+    }
+
+    @PostMapping("/activate")
+    public Mono<ResponseEntity<Object>> activateDevice(@RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.replace("Bearer ", "");
+        String email = jwtAdapter.extractUsername(token);
+
+        return linkDeviceUseCase.activateDevice(email)
+                .map(device -> ResponseEntity.ok((Object) Map.of(
+                        "status", "success",
+                        "message", "ESP32 activado. Comenzará a enviar datos de sensores MQ4, MQ7 y MQ135.",
+                        "device", device.getMacAddress(),
+                        "activated", true)))
                 .onErrorResume(e -> Mono.just(ResponseEntity.badRequest().body(Map.of("error", e.getMessage()))));
     }
 }

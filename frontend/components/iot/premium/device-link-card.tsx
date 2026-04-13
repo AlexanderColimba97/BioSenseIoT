@@ -27,19 +27,61 @@ async function linkDeviceAuto() {
   return response.json();
 }
 
+async function activateDevice() {
+  const token = localStorage.getItem('auth_token')
+  if (!token) throw new Error('No autenticado')
+
+  const response = await fetch(`${API_URL}/api/v2/devices/activate`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Error al activar el dispositivo.');
+  }
+  return response.json();
+}
+
 export function DeviceLinkCard() {
   const [isLoading, setIsLoading] = useState(false)
-  const [isLinked, setIsLinked] = useState(false)
+  const [deviceStatus, setDeviceStatus] = useState<'inactive' | 'linked' | 'active'>('inactive')
 
-  const handleAutoLink = async () => {
+  // Verificar estado del dispositivo al cargar
+  useEffect(() => {
+    const savedStatus = localStorage.getItem('device_status')
+    if (savedStatus) {
+      setDeviceStatus(savedStatus as 'inactive' | 'linked' | 'active')
+    }
+  }, [])
+
+  const handleActivateDevice = async () => {
     setIsLoading(true)
     try {
-      const result = await linkDeviceAuto()
-      toast.success('¡BioSense Encontrado!', { description: result.message })
-      setIsLinked(true)
+      // Primero vincular si no está vinculado
+      if (deviceStatus === 'inactive') {
+        await linkDeviceAuto()
+        setDeviceStatus('linked')
+        localStorage.setItem('device_status', 'linked')
+        toast.success('¡Dispositivo Vinculado!', { description: 'Ahora vamos a activarlo...' })
+      }
+
+      // Luego activar
+      const result = await activateDevice()
+      setDeviceStatus('active')
+      localStorage.setItem('device_status', 'active')
+      localStorage.setItem('device_activated', 'true') // Para que useSensorData sepa que debe refrescar
+      
+      toast.success('¡ESP32 Activado!', { description: 'Comenzará a enviar datos de sensores cada pocos segundos.' })
+      
+      // Recargar la página para que se active el consumo de datos
       setTimeout(() => window.location.reload(), 2000)
+      
     } catch (error: any) {
-      toast.error('Error de Sincronización', { description: error.message })
+      toast.error('Error', { description: error.message })
     } finally {
       setIsLoading(false)
     }
@@ -63,16 +105,16 @@ export function DeviceLinkCard() {
       </CardHeader>
 
       <CardContent>
-        {!isLinked ? (
+        {deviceStatus === 'inactive' ? (
           <Button 
             className="w-full h-16 text-lg font-black bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xl shadow-primary/20 rounded-2xl gap-3 transition-all active:scale-95" 
-            onClick={handleAutoLink}
+            onClick={handleActivateDevice}
             disabled={isLoading}
           >
             {isLoading ? (
               <>
                 <Loader2 className="animate-spin" size={24} />
-                BUSCANDO...
+                VINCULANDO...
               </>
             ) : (
               <>
@@ -81,12 +123,31 @@ export function DeviceLinkCard() {
               </>
             )}
           </Button>
+        ) : deviceStatus === 'linked' ? (
+          <Button 
+            className="w-full h-16 text-lg font-black bg-yellow-500 hover:bg-yellow-600 text-white shadow-2xl shadow-yellow-500/20 rounded-2xl gap-3 transition-all active:scale-95" 
+            onClick={handleActivateDevice}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="animate-spin" size={24} />
+                ACTIVANDO...
+              </>
+            ) : (
+              <>
+                <Power size={24} />
+                ACTIVAR ESP32
+              </>
+            )}
+          </Button>
         ) : (
           <div className="flex flex-col items-center justify-center py-4 space-y-2 animate-in zoom-in-95">
             <div className="p-3 bg-green-500/20 rounded-full">
-              <CheckCircle2 size={32} className="text-green-400" />
+              <CheckCircle2 size={32} className="text-green-400 animate-pulse" />
             </div>
-            <p className="font-bold text-green-400">DISPOSITIVO VINCULADO</p>
+            <p className="font-bold text-green-400">ESP32 ACTIVO</p>
+            <p className="text-xs text-slate-400">Enviando datos en tiempo real</p>
           </div>
         )}
         

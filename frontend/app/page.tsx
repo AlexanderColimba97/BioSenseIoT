@@ -57,9 +57,6 @@ export default function AirQualityApp() {
       case "dashboard":
         return (
           <DashboardView 
-            data={data} 
-            isLoading={isLoading}
-            isError={isError}
             onNavigateToAlerts={() => setCurrentView("alertas")}
             onNavigateToRecommendations={() => setCurrentView("recomendaciones")}
             onNavigateToProfile={() => setCurrentView("perfil")}
@@ -80,9 +77,6 @@ export default function AirQualityApp() {
       default:
         return (
           <DashboardView 
-            data={data} 
-            isLoading={isLoading}
-            isError={isError}
             onNavigateToAlerts={() => setCurrentView("alertas")} 
             onNavigateToRecommendations={() => setCurrentView("recomendaciones")} 
           />
