@@ -16,9 +16,9 @@ public class R2dbcDeviceRepositoryAdapter implements DeviceRepositoryPort {
     @Override
     public Mono<String> findLastActiveMacAddress() {
         return databaseClient.sql("SELECT d.mac_address FROM devices d " +
-                         "JOIN sensor_readings sr ON d.id = sr.device_id " +
-                         "WHERE sr.id = (SELECT MAX(id) FROM sensor_readings) " +
-                         "LIMIT 1")
+                "JOIN sensor_readings sr ON d.id = sr.device_id " +
+                "WHERE sr.id = (SELECT MAX(id) FROM sensor_readings) " +
+                "LIMIT 1")
                 .map(row -> row.get("mac_address", String.class))
                 .first();
     }
@@ -30,7 +30,8 @@ public class R2dbcDeviceRepositoryAdapter implements DeviceRepositoryPort {
                 .bind("mac", macAddress)
                 .fetch()
                 .rowsUpdated()
-                .flatMap(rows -> databaseClient.sql("SELECT id, mac_address, name, user_id FROM devices WHERE mac_address = :mac")
+                .flatMap(rows -> databaseClient
+                        .sql("SELECT id, mac_address, name, user_id FROM devices WHERE mac_address = :mac")
                         .bind("mac", macAddress)
                         .map(row -> DeviceDomain.builder()
                                 .id(row.get("id", Integer.class))
@@ -46,6 +47,20 @@ public class R2dbcDeviceRepositoryAdapter implements DeviceRepositoryPort {
         return databaseClient.sql("SELECT id FROM users WHERE email = :email")
                 .bind("email", email)
                 .map(row -> row.get("id", Integer.class))
+                .first();
+    }
+
+    @Override
+    public Mono<DeviceDomain> findByUserEmail(String email) {
+        return databaseClient.sql("SELECT d.id, d.mac_address, d.name, d.user_id FROM devices d " +
+                "JOIN users u ON u.id = d.user_id WHERE u.email = :email")
+                .bind("email", email)
+                .map(row -> DeviceDomain.builder()
+                        .id(row.get("id", Integer.class))
+                        .macAddress(row.get("mac_address", String.class))
+                        .name(row.get("name", String.class))
+                        .userId(row.get("user_id", Integer.class))
+                        .build())
                 .first();
     }
 }

@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import useSWR from 'swr'
 import { DiagnosticResponse } from '@/lib/types'
 import { AuthService } from '@/lib/auth-service'

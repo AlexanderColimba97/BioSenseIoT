@@ -5,6 +5,10 @@ import reactor.core.publisher.Mono;
 
 public interface DeviceRepositoryPort {
     Mono<String> findLastActiveMacAddress();
+
     Mono<DeviceDomain> linkDeviceToUser(String macAddress, Integer userId);
+
     Mono<Integer> findUserIdByEmail(String email);
+
+    Mono<DeviceDomain> findByUserEmail(String email);
 }

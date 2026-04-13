@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
@@ -96,7 +96,7 @@ export function DeviceLinkCard() {
       
       <CardHeader className="pb-4">
         <CardTitle className="text-xl flex items-center gap-2">
-          <Power className={isLinked ? "text-green-400" : "text-primary"} />
+          <Power className={deviceStatus === 'active' ? "text-green-400" : "text-primary"} />
           Estado del Hardware
         </CardTitle>
         <CardDescription className="text-slate-400">
