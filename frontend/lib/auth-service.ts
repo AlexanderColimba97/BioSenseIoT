@@ -13,8 +13,9 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// URL de producción directa para asegurar conectividad en el APK Android
-const API_URL = 'https://biosenseiot-production.up.railway.app/api/v2';
+// URL de producción configurable para evitar hardcodear el backend
+const BASE_API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://biosenseiot-production-e061.up.railway.app').replace(/\/+$/, '');
+const API_URL = `${BASE_API_URL}/api/v2`;
 
 export class AuthService {
   

@@ -16,6 +16,8 @@ import org.springframework.http.HttpMethod;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,46 +26,41 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 @EnableWebFluxSecurity
 public class SecurityConfig {
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-
     @Value("${jwt.secret}")
     private String jwtSecret;
+
+    @Value("${cors.allowed-origins:http://localhost,https://localhost,http://localhost:3000,capacitor://localhost,https://biosenseiot-production-e061.up.railway.app}")
+    private String allowedOriginsEnv;
 
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         http
-            .csrf(ServerHttpSecurity.CsrfSpec::disable)
-            .cors(cors -> cors.disable()) // Handled by CorsWebFilter
-            .authorizeExchange(exchanges -> exchanges
-                .pathMatchers("/api/v2/auth/**").permitAll() // Nueva ruta auth pública
-                .pathMatchers(HttpMethod.POST, "/api/v2/sensors/reading").permitAll() // Nueva ruta unificada
-                .pathMatchers("/api/v2/devices/**").authenticated() 
-                .pathMatchers("/api/v2/diagnostics/**").authenticated()
-                .anyExchange().authenticated()
-            )
-            .oauth2ResourceServer(oauth2 -> oauth2
-                .jwt(jwt -> jwt.jwtDecoder(jwtDecoder()))
-            );
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .cors(cors -> cors.disable()) // Handled by CorsWebFilter
+                .authorizeExchange(exchanges -> exchanges
+                        .pathMatchers("/api/v2/auth/**").permitAll() // Nueva ruta auth pública
+                        .pathMatchers(HttpMethod.POST, "/api/v2/sensors/reading").permitAll() // Nueva ruta unificada
+                        .pathMatchers("/api/v2/devices/**").authenticated()
+                        .pathMatchers("/api/v2/diagnostics/**").authenticated()
+                        .anyExchange().authenticated())
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtDecoder(jwtDecoder())));
         return http.build();
     }
 
     @Bean
     public CorsWebFilter corsWebFilter() {
         CorsConfiguration corsConfig = new CorsConfiguration();
-        // Permitimos específicamente los orígenes de aplicaciones móviles y web locales
-        corsConfig.setAllowedOrigins(Arrays.asList(
-            "http://localhost",
-            "https://localhost",
-            "http://localhost:3000",
-            "capacitor://localhost",
-            "https://biosenseiot-production.up.railway.app"
-        ));
+        // Lee orígenes CORS desde variable de entorno, más flexible que hardcodeado
+        List<String> allowedOrigins = Arrays.stream(allowedOriginsEnv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
+        corsConfig.setAllowedOrigins(allowedOrigins);
         corsConfig.setMaxAge(3600L);
         corsConfig.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        corsConfig.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "x-requested-with", "Cache-Control"));
+        corsConfig
+                .setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "x-requested-with", "Cache-Control"));
         corsConfig.setAllowCredentials(true);
         corsConfig.setExposedHeaders(Arrays.asList("Authorization"));
 

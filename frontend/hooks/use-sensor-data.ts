@@ -4,7 +4,7 @@ import useSWR from 'swr'
 import { DiagnosticResponse } from '@/lib/types'
 import { AuthService } from '@/lib/auth-service'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://biosenseiot-production.up.railway.app'
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://biosenseiot-production-e061.up.railway.app').replace(/\/+$/, '')
 
 // Datos estáticos de respaldo específicos para tus sensores MQ
 const DEFAULT_DIAGNOSTIC: DiagnosticResponse = {

@@ -1,6 +1,6 @@
 import { DiagnosticResponse, Alert, HistoricalDataPoint } from './types';
 
-const API_BASE_URL = 'https://biosenseiot-production.up.railway.app/api';
+const API_BASE_URL = `${(process.env.NEXT_PUBLIC_API_URL || 'https://biosenseiot-production-e061.up.railway.app').replace(/\/+$/, '')}/api`;
 
 export function generateAlerts(): Alert[] {
   return [

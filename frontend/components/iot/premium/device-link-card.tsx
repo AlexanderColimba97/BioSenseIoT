@@ -6,11 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from 'sonner'
 import { Power, CheckCircle2, Loader2, Search } from 'lucide-react'
 
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://biosenseiot-production-e061.up.railway.app').replace(/\/+$/, '')
+
 async function linkDeviceAuto() {
   const token = localStorage.getItem('auth_token')
   if (!token) throw new Error('No autenticado')
 
-  const response = await fetch('https://biosenseiot-production.up.railway.app/api/v2/devices/link-auto', {
+  const response = await fetch(`${API_URL}/api/v2/devices/link-auto`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
