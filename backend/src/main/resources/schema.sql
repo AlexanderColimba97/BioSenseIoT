@@ -42,11 +42,14 @@ CREATE TABLE IF NOT EXISTS pets (
 -- Devices table
 CREATE TABLE IF NOT EXISTS devices (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     mac_address VARCHAR(17) UNIQUE NOT NULL,
     name VARCHAR(100),
     last_seen TIMESTAMP WITH TIME ZONE
 );
+
+-- Make sure existing device table can store unlinked ESP32 devices until a user links them
+ALTER TABLE IF EXISTS devices ALTER COLUMN user_id DROP NOT NULL;
 
 -- Sensor readings table (Optimized for time-series)
 CREATE TABLE IF NOT EXISTS sensor_readings (

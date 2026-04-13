@@ -11,4 +11,6 @@ public interface DeviceRepositoryPort {
     Mono<Integer> findUserIdByEmail(String email);
 
     Mono<DeviceDomain> findByUserEmail(String email);
+
+    Mono<Integer> getOrCreateDeviceId(String macAddress);
 }

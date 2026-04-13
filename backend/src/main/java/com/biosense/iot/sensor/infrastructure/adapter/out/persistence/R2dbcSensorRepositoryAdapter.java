@@ -21,16 +21,17 @@ public class R2dbcSensorRepositoryAdapter implements DeviceRepositoryPort, Senso
                 .map(row -> row.get("id", Integer.class))
                 .first()
                 .switchIfEmpty(
-                    databaseClient.sql("INSERT INTO devices (mac_address, name, user_id) VALUES (:mac, 'ESP32 Sensor', 1) RETURNING id")
-                        .bind("mac", macAddress)
-                        .map(row -> row.get("id", Integer.class))
-                        .first()
-                );
+                        databaseClient.sql(
+                                "INSERT INTO devices (mac_address, name) VALUES (:mac, 'ESP32 Sensor') RETURNING id")
+                                .bind("mac", macAddress)
+                                .map(row -> row.get("id", Integer.class))
+                                .first());
     }
 
     @Override
     public Mono<SensorReadingDomain> save(SensorReadingDomain reading) {
-        return databaseClient.sql("INSERT INTO sensor_readings (device_id, mq4_value, mq7_value, mq135_value) VALUES (:did, :mq4, :mq7, :mq135) RETURNING id")
+        return databaseClient.sql(
+                "INSERT INTO sensor_readings (device_id, mq4_value, mq7_value, mq135_value) VALUES (:did, :mq4, :mq7, :mq135) RETURNING id")
                 .bind("did", reading.getDeviceId())
                 .bind("mq4", reading.getMq4())
                 .bind("mq7", reading.getMq7())

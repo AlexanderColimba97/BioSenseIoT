@@ -15,8 +15,9 @@ public class R2dbcDeviceRepositoryAdapter implements DeviceRepositoryPort {
 
     @Override
     public Mono<String> findLastActiveMacAddress() {
-        return databaseClient.sql("SELECT d.mac_address FROM devices d " +
-                "JOIN sensor_readings sr ON d.id = sr.device_id " +
+        // Buscar la MAC del último sensor_reading usando device_id y la tabla devices
+        return databaseClient.sql("SELECT d.mac_address FROM sensor_readings sr " +
+                "JOIN devices d ON d.id = sr.device_id " +
                 "WHERE sr.id = (SELECT MAX(id) FROM sensor_readings) " +
                 "LIMIT 1")
                 .map(row -> row.get("mac_address", String.class))
@@ -25,21 +26,53 @@ public class R2dbcDeviceRepositoryAdapter implements DeviceRepositoryPort {
 
     @Override
     public Mono<DeviceDomain> linkDeviceToUser(String macAddress, Integer userId) {
-        return databaseClient.sql("UPDATE devices SET user_id = :userId, name = 'Mi BioSense' WHERE mac_address = :mac")
-                .bind("userId", userId)
+        // Primero verificar si el dispositivo ya existe
+        return databaseClient.sql("SELECT id, mac_address, name, user_id FROM devices WHERE mac_address = :mac")
                 .bind("mac", macAddress)
-                .fetch()
-                .rowsUpdated()
-                .flatMap(rows -> databaseClient
-                        .sql("SELECT id, mac_address, name, user_id FROM devices WHERE mac_address = :mac")
-                        .bind("mac", macAddress)
-                        .map(row -> DeviceDomain.builder()
-                                .id(row.get("id", Integer.class))
-                                .macAddress(row.get("mac_address", String.class))
-                                .name(row.get("name", String.class))
-                                .userId(row.get("user_id", Integer.class))
-                                .build())
-                        .first());
+                .map(row -> DeviceDomain.builder()
+                        .id(row.get("id", Integer.class))
+                        .macAddress(row.get("mac_address", String.class))
+                        .name(row.get("name", String.class))
+                        .userId(row.get("user_id", Integer.class))
+                        .build())
+                .first()
+                .flatMap(existingDevice -> {
+                    // Si ya existe, solo actualizar el user_id
+                    return databaseClient
+                            .sql("UPDATE devices SET user_id = :userId, name = 'Mi BioSense' WHERE mac_address = :mac")
+                            .bind("userId", userId)
+                            .bind("mac", macAddress)
+                            .fetch()
+                            .rowsUpdated()
+                            .then(databaseClient
+                                    .sql("SELECT id, mac_address, name, user_id FROM devices WHERE mac_address = :mac")
+                                    .bind("mac", macAddress)
+                                    .map(row -> DeviceDomain.builder()
+                                            .id(row.get("id", Integer.class))
+                                            .macAddress(row.get("mac_address", String.class))
+                                            .name(row.get("name", String.class))
+                                            .userId(row.get("user_id", Integer.class))
+                                            .build())
+                                    .first());
+                })
+                .switchIfEmpty(
+                        // Si no existe, crear el dispositivo primero
+                        databaseClient.sql(
+                                "INSERT INTO devices (mac_address, name, user_id) VALUES (:mac, 'Mi BioSense', :userId) RETURNING id")
+                                .bind("mac", macAddress)
+                                .bind("userId", userId)
+                                .map(row -> row.get("id", Integer.class))
+                                .first()
+                                .flatMap(newId -> databaseClient
+                                        .sql("SELECT id, mac_address, name, user_id FROM devices WHERE id = :id")
+                                        .bind("id", newId)
+                                        .map(row -> DeviceDomain.builder()
+                                                .id(row.get("id", Integer.class))
+                                                .macAddress(row.get("mac_address", String.class))
+                                                .name(row.get("name", String.class))
+                                                .userId(row.get("user_id", Integer.class))
+                                                .build())
+                                        .first()));
     }
 
     @Override
@@ -62,5 +95,21 @@ public class R2dbcDeviceRepositoryAdapter implements DeviceRepositoryPort {
                         .userId(row.get("user_id", Integer.class))
                         .build())
                 .first();
+    }
+
+    @Override
+    public Mono<Integer> getOrCreateDeviceId(String macAddress) {
+        // Primero verificar si el dispositivo ya existe
+        return databaseClient.sql("SELECT id FROM devices WHERE mac_address = :mac")
+                .bind("mac", macAddress)
+                .map(row -> row.get("id", Integer.class))
+                .first()
+                .switchIfEmpty(
+                        // Si no existe, crear el dispositivo sin user_id
+                        databaseClient.sql(
+                                "INSERT INTO devices (mac_address, name) VALUES (:mac, 'BioSense Device') RETURNING id")
+                                .bind("mac", macAddress)
+                                .map(row -> row.get("id", Integer.class))
+                                .first());
     }
 }
