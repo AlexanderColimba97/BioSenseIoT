@@ -4,7 +4,7 @@ import com.biosense.iot.device.domain.model.DeviceDomain;
 import reactor.core.publisher.Mono;
 
 public interface LinkDeviceUseCase {
-    Mono<DeviceDomain> execute(String userEmail);
+    Mono<DeviceDomain> execute(String userEmail, String macAddress, String deviceName);
 
-    Mono<DeviceDomain> activateDevice(String userEmail);
+    Mono<Void> unlink(String userEmail, Integer deviceId);
 }

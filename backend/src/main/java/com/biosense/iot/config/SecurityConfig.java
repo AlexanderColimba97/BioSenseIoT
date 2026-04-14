@@ -36,10 +36,10 @@ public class SecurityConfig {
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
-                .cors(cors -> cors.disable()) // Handled by CorsWebFilter
+                .cors(cors -> cors.disable())
                 .authorizeExchange(exchanges -> exchanges
-                        .pathMatchers("/api/v2/auth/**").permitAll() // Nueva ruta auth pública
-                        .pathMatchers(HttpMethod.POST, "/api/v2/sensors/reading").permitAll() // Nueva ruta unificada
+                        .pathMatchers("/api/v2/auth/**").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/api/v2/sensors/reading").permitAll()
                         .pathMatchers("/api/v2/devices/**").authenticated()
                         .pathMatchers("/api/v2/diagnostics/**").authenticated()
                         .anyExchange().authenticated())
@@ -51,7 +51,7 @@ public class SecurityConfig {
     @Bean
     public CorsWebFilter corsWebFilter() {
         CorsConfiguration corsConfig = new CorsConfiguration();
-        // Lee orígenes CORS desde variable de entorno, más flexible que hardcodeado
+
         List<String> allowedOrigins = Arrays.stream(allowedOriginsEnv.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())

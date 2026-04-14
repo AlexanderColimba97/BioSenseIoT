@@ -1,16 +1,17 @@
 package com.biosense.iot.device.domain.port.out;
 
 import com.biosense.iot.device.domain.model.DeviceDomain;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public interface DeviceRepositoryPort {
-    Mono<String> findLastActiveMacAddress();
+    Mono<DeviceDomain> linkDeviceToUser(Integer userId, String macAddress, String deviceName);
 
-    Mono<DeviceDomain> linkDeviceToUser(String macAddress, Integer userId);
+    Flux<DeviceDomain> getUserDevices(Integer userId);
 
-    Mono<Integer> findUserIdByEmail(String email);
+    Mono<DeviceDomain> findById(Integer deviceId);
 
-    Mono<DeviceDomain> findByUserEmail(String email);
+    Mono<Void> unlinkDevice(Integer deviceId);
 
-    Mono<Integer> getOrCreateDeviceId(String macAddress);
+    Mono<DeviceDomain> findByMacAddress(String macAddress);
 }
