@@ -1,18 +1,17 @@
-package com.biosense.iot.dto;
+package com.biosense.iot.device.infrastructure.adapter.in.web.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import java.time.Instant;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class DeviceResponseDto {
-    private Integer id;
-    private String name;
+public class LinkDeviceResponse {
+    private String status;
+    private Integer deviceId;
     private String macAddress;
-    private Instant lastSeen;
+    private String name;
 }

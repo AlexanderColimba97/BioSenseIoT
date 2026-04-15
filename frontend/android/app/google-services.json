@@ -1,9 +1,9 @@
 {
   "project_info": {
-    "project_number": "669903110693",
-    "firebase_url": "https://clearpet-433c4-default-rtdb.firebaseio.com",
-    "project_id": "clearpet-433c4",
-    "storage_bucket": "clearpet-433c4.firebasestorage.app"
+    "project_number": "000000000000",
+    "firebase_url": "https://biosense-iot-default-rtdb.firebaseio.com",
+    "project_id": "biosense-iot",
+    "storage_bucket": "biosense-iot.firebasestorage.app"
   },
   "client": [
     {

@@ -21,7 +21,8 @@ public class IngestSensorReadingUseCaseImpl implements IngestSensorReadingUseCas
 
     @Override
     public Mono<SensorReadingDomain> execute(String macAddress, Double mq4, Double mq7, Double mq135) {
-        return deviceRepositoryPort.getOrCreateDeviceId(macAddress)
+        return deviceRepositoryPort.getLinkedDeviceId(macAddress)
+                .switchIfEmpty(Mono.error(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN, "Unlinked Device")))
                 .flatMap(deviceId -> {
                     SensorReadingDomain reading = new SensorReadingDomain(deviceId, mq4, mq7, mq135);
                     

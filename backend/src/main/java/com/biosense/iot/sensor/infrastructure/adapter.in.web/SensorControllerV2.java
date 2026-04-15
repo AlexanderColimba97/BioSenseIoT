@@ -1,6 +1,6 @@
 package com.biosense.iot.sensor.infrastructure.adapter.in.web;
 
-import com.biosense.iot.dto.SensorReadingRequest;
+import com.biosense.iot.sensor.infrastructure.adapter.in.web.dto.SensorReadingRequest;
 import com.biosense.iot.sensor.domain.port.in.IngestSensorReadingUseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +29,11 @@ public class SensorControllerV2 {
                 "id", reading.getId(),
                 "airQualityState", reading.getAirQualityState()
         )))
-        .onErrorResume(e -> Mono.just(ResponseEntity.internalServerError().body((Object) Map.of("error", e.getMessage()))));
+        .onErrorResume(e -> {
+            if (e instanceof org.springframework.web.server.ResponseStatusException rse) {
+                return Mono.just(ResponseEntity.status(rse.getStatusCode()).body((Object) Map.of("error", rse.getReason())));
+            }
+            return Mono.just(ResponseEntity.internalServerError().body((Object) Map.of("error", e.getMessage())));
+        });
     }
 }

@@ -16,17 +16,11 @@ public class R2dbcSensorRepositoryAdapter implements DeviceRepositoryPort, Senso
     private final DatabaseClient databaseClient;
 
     @Override
-    public Mono<Integer> getOrCreateDeviceId(String macAddress) {
-        return databaseClient.sql("SELECT id FROM devices WHERE mac_address = :mac")
+    public Mono<Integer> getLinkedDeviceId(String macAddress) {
+        return databaseClient.sql("SELECT id FROM devices WHERE mac_address = :mac AND user_id IS NOT NULL")
                 .bind("mac", macAddress.toUpperCase())
                 .map(row -> row.get("id", Integer.class))
-                .first()
-                .switchIfEmpty(
-                        databaseClient.sql(
-                                "INSERT INTO devices (mac_address, name) VALUES (:mac, 'ESP32 Sensor') RETURNING id")
-                                .bind("mac", macAddress.toUpperCase())
-                                .map(row -> row.get("id", Integer.class))
-                                .first());
+                .first();
     }
 
     @Override

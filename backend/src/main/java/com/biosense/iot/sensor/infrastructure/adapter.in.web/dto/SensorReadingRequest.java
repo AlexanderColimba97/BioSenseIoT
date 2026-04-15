@@ -1,4 +1,4 @@
-package com.biosense.iot.dto;
+package com.biosense.iot.sensor.infrastructure.adapter.in.web.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

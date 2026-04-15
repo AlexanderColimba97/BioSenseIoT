@@ -30,8 +30,23 @@ public class R2dbcDeviceRepositoryAdapter implements DeviceRepositoryPort {
                                                 .name(row.get("name", String.class))
                                                 .build())
                                 .first()
-                                .switchIfEmpty(Mono.error(
-                                                new IllegalArgumentException("Device not found: " + macAddress)));
+                                .switchIfEmpty(
+                                                databaseClient.sql(
+                                                                "INSERT INTO devices (mac_address, name, user_id, last_seen) VALUES (:macAddress, :deviceName, :userId, NOW()) "
+                                                                                +
+                                                                                "RETURNING id, user_id, mac_address, name")
+                                                                .bind("userId", userId)
+                                                                .bind("macAddress", macAddress.toUpperCase())
+                                                                .bind("deviceName", deviceName)
+                                                                .map(row -> DeviceDomain.builder()
+                                                                                .id(row.get("id", Integer.class))
+                                                                                .userId(row.get("user_id",
+                                                                                                Integer.class))
+                                                                                .macAddress(row.get("mac_address",
+                                                                                                String.class))
+                                                                                .name(row.get("name", String.class))
+                                                                                .build())
+                                                                .first());
         }
 
         @Override
