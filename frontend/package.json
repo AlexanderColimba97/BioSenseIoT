@@ -12,6 +12,7 @@
     "cap:android": "npm run export && npx cap copy && npx cap sync && npx cap open android"
   },
   "dependencies": {
+    "@capacitor-community/bluetooth-le": "^8.1.3",
     "@capacitor/android": "^6.1.2",
     "@capacitor/cli": "^6.1.2",
     "@capacitor/core": "^6.1.2",
