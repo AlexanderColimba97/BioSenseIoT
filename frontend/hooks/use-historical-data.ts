@@ -23,14 +23,16 @@ export interface ReadingStats {
 }
 
 function groupReadingsByDay(readings: SensorReading[]): ChartPoint[] {
-  const dayMap: Map<string, { co: number[]; ch4: number[]; covs: number[] }> = new Map()
   const dayNames = ['D', 'L', 'M', 'X', 'J', 'V', 'S']
+  type DayEntry = { dayOfWeek: number; co: number[]; ch4: number[]; covs: number[] }
+  const dayMap: Map<string, DayEntry> = new Map()
 
   for (const r of readings) {
     const d = new Date(r.timestamp)
     const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
-    const label = dayNames[d.getDay()]
-    if (!dayMap.has(key)) dayMap.set(key, { co: [], ch4: [], covs: [] })
+    if (!dayMap.has(key)) {
+      dayMap.set(key, { dayOfWeek: d.getDay(), co: [], ch4: [], covs: [] })
+    }
     const entry = dayMap.get(key)!
     entry.co.push(r.mq7)
     entry.ch4.push(r.mq4)
@@ -39,17 +41,14 @@ function groupReadingsByDay(readings: SensorReading[]): ChartPoint[] {
 
   const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0
 
-  return Array.from(dayMap.entries())
+  return Array.from(dayMap.values())
     .slice(-7)
-    .map(([key, val]) => {
-      const d = new Date(key.replace(/-/g, '/').replace(/\/(\d)$/, '/0$1').replace(/\/(\d)\//, '/0$1/'))
-      return {
-        label: dayNames[new Date(key.split('-').join('-')).getDay()] || '?',
-        CO: avg(val.co),
-        CH4: avg(val.ch4),
-        COVs: avg(val.covs),
-      }
-    })
+    .map((val) => ({
+      label: dayNames[val.dayOfWeek] || '?',
+      CO: avg(val.co),
+      CH4: avg(val.ch4),
+      COVs: avg(val.covs),
+    }))
 }
 
 function computeStats(readings: SensorReading[]): ReadingStats {

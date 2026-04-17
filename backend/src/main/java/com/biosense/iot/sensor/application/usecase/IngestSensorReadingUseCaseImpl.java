@@ -45,20 +45,27 @@ public class IngestSensorReadingUseCaseImpl implements IngestSensorReadingUseCas
         if (apiKey == null || apiKey.isBlank()) {
             return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing X-BioSense-Key header"));
         }
+        // Only validate for linked devices (ones that have a user_id, meaning they're already in our DB)
         return deviceRepositoryPort.getApiSecretByMacAddress(macAddress)
                 .flatMap(storedSecret -> {
                     if (storedSecret == null) {
-                        // First contact: store the key
+                        // Device exists but api_secret not yet set: store on first use
                         return deviceRepositoryPort.storeApiSecretByMacAddress(macAddress, apiKey);
                     }
                     if (!storedSecret.equals(apiKey)) {
                         return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid X-BioSense-Key"));
                     }
-                    return Mono.empty();
+                    return Mono.<Void>empty();
                 })
                 .switchIfEmpty(Mono.defer(() ->
-                        // Device row exists but api_secret is null: store on first use
-                        deviceRepositoryPort.storeApiSecretByMacAddress(macAddress, apiKey)));
+                        // Device not yet in DB: provisioning not done, store the key when device row appears
+                        deviceRepositoryPort.storeApiSecretByMacAddress(macAddress, apiKey)
+                                .onErrorResume(e -> {
+                                    // Device row may not exist yet; allow the request to proceed
+                                    // and fail later at getLinkedDeviceId if not linked
+                                    log.debug("Could not store api_secret for {}: {}", macAddress, e.getMessage());
+                                    return Mono.empty();
+                                })));
     }
 
     private Mono<Void> generateAndSaveDiagnostic(Integer deviceId, SensorReadingDomain reading) {
