@@ -14,4 +14,5 @@ public class LinkDeviceResponse {
     private Integer deviceId;
     private String macAddress;
     private String name;
+    private String apiSecret;
 }

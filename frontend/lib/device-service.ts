@@ -1,9 +1,14 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://biosenseiot-production-e061.up.railway.app').replace(/\/+$/, '')
+
+function getAuthToken(): string {
+  return localStorage.getItem('auth_token') || localStorage.getItem('token') || ''
+}
 
 export interface Device {
   id: number;
   name: string;
   macAddress: string;
+  apiSecret?: string;
 }
 
 export interface SensorReading {
@@ -20,7 +25,7 @@ export async function linkDevice(macAddress: string, deviceName: string): Promis
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     },
     body: JSON.stringify({ macAddress, deviceName })
   });
@@ -34,14 +39,15 @@ export async function linkDevice(macAddress: string, deviceName: string): Promis
   return {
     id: data.deviceId,
     name: data.name,
-    macAddress: data.macAddress
+    macAddress: data.macAddress,
+    apiSecret: data.apiSecret
   };
 }
 
 export async function getUserDevices(): Promise<Device[]> {
   const response = await fetch(`${API_URL}/api/v2/devices/my-devices`, {
     headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     }
   });
   
@@ -54,7 +60,7 @@ export async function getDeviceReadings(deviceId: number, limit = 100): Promise<
     `${API_URL}/api/v2/devices/${deviceId}/readings?limit=${limit}`,
     {
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${getAuthToken()}`
       }
     }
   );
@@ -67,7 +73,7 @@ export async function unlinkDevice(deviceId: number): Promise<void> {
   const response = await fetch(`${API_URL}/api/v2/devices/${deviceId}`, {
     method: 'DELETE',
     headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     }
   });
   

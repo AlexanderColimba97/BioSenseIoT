@@ -45,11 +45,19 @@ CREATE TABLE IF NOT EXISTS devices (
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     mac_address VARCHAR(17) UNIQUE NOT NULL,
     name VARCHAR(100),
+    api_secret VARCHAR(255),
     last_seen TIMESTAMP WITH TIME ZONE
 );
 
 -- Make sure existing device table can store unlinked ESP32 devices until a user links them
 ALTER TABLE IF EXISTS devices ALTER COLUMN user_id DROP NOT NULL;
+-- Add api_secret column to existing databases (idempotent via DO block)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name='devices' AND column_name='api_secret') THEN
+    ALTER TABLE devices ADD COLUMN api_secret VARCHAR(255);
+  END IF;
+END $$;
 
 -- Sensor readings table (Optimized for time-series)
 CREATE TABLE IF NOT EXISTS sensor_readings (
@@ -77,3 +85,4 @@ CREATE INDEX IF NOT EXISTS idx_sensor_readings_device_id ON sensor_readings(devi
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_timestamp ON sensor_readings(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_diagnostics_user_id ON ai_diagnostics(user_id);
 CREATE INDEX IF NOT EXISTS idx_pets_user_id ON pets(user_id);
+CREATE INDEX IF NOT EXISTS idx_devices_mac_address ON devices(mac_address);

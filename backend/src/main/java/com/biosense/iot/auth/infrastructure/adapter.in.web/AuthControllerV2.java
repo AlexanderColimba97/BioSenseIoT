@@ -3,7 +3,7 @@ package com.biosense.iot.auth.infrastructure.adapter.in.web;
 import com.biosense.iot.auth.domain.port.in.AuthenticateWithGoogleUseCase;
 import com.biosense.iot.auth.domain.port.in.LoginUseCase;
 import com.biosense.iot.auth.domain.port.in.RegisterUseCase;
-import com.biosense.iot.auth.infrastructure.adapter.in.web.dto.AuthResponse;
+import com.biosense.iot.dto.AuthResponse;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

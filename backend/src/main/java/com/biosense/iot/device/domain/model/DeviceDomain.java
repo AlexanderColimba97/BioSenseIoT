@@ -14,4 +14,5 @@ public class DeviceDomain {
     private String macAddress;
     private String name;
     private Integer userId;
+    private String apiSecret;
 }

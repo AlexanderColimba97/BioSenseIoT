@@ -24,6 +24,9 @@ export default function AirQualityApp() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { data, isLoading, isError } = useSensorData()
 
+  // Derive alert count from real diagnostic severity
+  const alertCount = (data.severity === 'HIGH' || data.severity === 'CRITICAL') ? 1 : 0
+
   useEffect(() => {
     setMounted(true)
     setIsAuthenticated(AuthService.isAuthenticated())
@@ -90,7 +93,7 @@ export default function AirQualityApp() {
       <AppHeader 
         title="Monitoreo Ambiental IoT" 
         onMenuClick={() => setSidebarOpen(true)}
-        notificationCount={3}
+        notificationCount={alertCount}
       />
 
       {/* Sidebar */}
@@ -111,7 +114,7 @@ export default function AirQualityApp() {
       <BottomNavigation 
         currentView={currentView}
         onNavigate={setCurrentView}
-        alertCount={3}
+        alertCount={alertCount}
       />
     </div>
   )

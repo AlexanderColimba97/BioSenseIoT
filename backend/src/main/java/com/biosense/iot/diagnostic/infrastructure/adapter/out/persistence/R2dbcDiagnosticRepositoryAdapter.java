@@ -41,4 +41,17 @@ public class R2dbcDiagnosticRepositoryAdapter implements DiagnosticRepositoryPor
                 .map(row -> row.get("id", Integer.class))
                 .first();
     }
+
+    @Override
+    public Mono<Void> save(Integer userId, Long readingId, String severity, String diagnosticText, String recommendation) {
+        return databaseClient.sql(
+                "INSERT INTO ai_diagnostics (user_id, reading_id, diagnostic_text, severity, recommendation, timestamp) " +
+                "VALUES (:userId, :readingId, :diagnosticText, :severity, :recommendation, NOW())")
+                .bind("userId", userId)
+                .bind("readingId", readingId)
+                .bind("diagnosticText", diagnosticText)
+                .bind("severity", severity)
+                .bind("recommendation", recommendation)
+                .then();
+    }
 }

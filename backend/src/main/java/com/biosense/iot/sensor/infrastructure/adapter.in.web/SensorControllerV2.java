@@ -17,15 +17,18 @@ public class SensorControllerV2 {
     private final IngestSensorReadingUseCase ingestSensorReadingUseCase;
 
     @PostMapping("/reading")
-    public Mono<ResponseEntity<Object>> receiveReading(@RequestBody SensorReadingRequest request) {
+    public Mono<ResponseEntity<Object>> receiveReading(
+            @RequestBody SensorReadingRequest request,
+            @RequestHeader(value = "X-BioSense-Key", required = false) String bioSenseKey) {
         return ingestSensorReadingUseCase.execute(
                 request.getMacAddress(),
+                bioSenseKey,
                 request.getMq4(),
                 request.getMq7(),
                 request.getMq135()
         )
         .map(reading -> ResponseEntity.ok((Object) Map.of(
-                "status", "success", 
+                "status", "success",
                 "id", reading.getId(),
                 "airQualityState", reading.getAirQualityState()
         )))

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Calendar, TrendingUp, TrendingDown, AlertTriangle, FileText, Table } from "lucide-react"
+import { Calendar, TrendingUp, TrendingDown, AlertTriangle, FileText, Table, Loader2 } from "lucide-react"
 import { StatCard } from "../stat-card"
 import { Button } from "@/components/ui/button"
 import { 
@@ -13,27 +13,36 @@ import {
   Tooltip,
   Legend
 } from "recharts"
+import { useHistoricalData } from "@/hooks/use-historical-data"
 
-const trendData = [
-  { day: "L", CO: 35, CH4: 28, COVs: 18 },
-  { day: "M", CO: 40, CH4: 32, COVs: 22 },
-  { day: "X", CO: 38, CH4: 30, COVs: 21 },
-  { day: "J", CO: 37, CH4: 28, COVs: 25 },
-  { day: "V", CO: 48, CH4: 35, COVs: 24 },
-  { day: "S", CO: 45, CH4: 32, COVs: 21 },
-  { day: "D", CO: 42, CH4: 30, COVs: 20 }
+const FALLBACK_CHART = [
+  { label: "L", CO: 35, CH4: 28, COVs: 18 },
+  { label: "M", CO: 40, CH4: 32, COVs: 22 },
+  { label: "X", CO: 38, CH4: 30, COVs: 21 },
+  { label: "J", CO: 37, CH4: 28, COVs: 25 },
+  { label: "V", CO: 48, CH4: 35, COVs: 24 },
+  { label: "S", CO: 45, CH4: 32, COVs: 21 },
+  { label: "D", CO: 42, CH4: 30, COVs: 20 },
 ]
 
 const dateRanges = ["Hoy", "7 dias", "30 dias", "90 dias"]
 
 export function AnalysisView() {
   const [selectedRange, setSelectedRange] = useState("7 dias")
+  const { chartData, stats, isLoading, hasRealData } = useHistoricalData()
+
+  const displayData = hasRealData ? chartData : FALLBACK_CHART
 
   return (
     <div className="pb-24">
       {/* Header */}
       <div className="p-4 pb-0">
         <h1 className="text-2xl font-bold tracking-tight">Analisis Historico</h1>
+        {!hasRealData && !isLoading && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Conecta tu dispositivo para ver datos reales
+          </p>
+        )}
       </div>
 
       {/* Date Range Selector */}
@@ -72,13 +81,21 @@ export function AnalysisView() {
       {/* Trend Chart */}
       <div className="px-4">
         <div className="bg-card rounded-2xl border border-border/50 p-4 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
-          <h3 className="font-semibold mb-4">Tendencias de Gases</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Tendencias de Gases</h3>
+            {isLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+            {!hasRealData && !isLoading && (
+              <span className="text-[10px] text-muted-foreground bg-secondary/50 px-2 py-1 rounded-full">
+                Demo
+              </span>
+            )}
+          </div>
           
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+              <LineChart data={displayData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
                 <XAxis 
-                  dataKey="day" 
+                  dataKey="label" 
                   axisLine={false} 
                   tickLine={false}
                   tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
@@ -87,7 +104,6 @@ export function AnalysisView() {
                   axisLine={false} 
                   tickLine={false}
                   tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
-                  domain={[0, 60]}
                 />
                 <Tooltip 
                   contentStyle={{ 
@@ -139,37 +155,37 @@ export function AnalysisView() {
         <StatCard
           icon={TrendingUp}
           label="Promedio CO"
-          value="38"
+          value={hasRealData ? String(stats.avgCO) : "38"}
           unit="ppm"
           status="info"
           trend="stable"
-          trendValue="vs semana anterior"
+          trendValue="últimas lecturas"
           delay={150}
         />
         <StatCard
           icon={TrendingUp}
           label="Maximo CH4"
-          value="52"
+          value={hasRealData ? String(stats.maxCH4) : "52"}
           unit="ppm"
           status="warning"
           trend="up"
-          trendValue="8% mayor"
+          trendValue="pico registrado"
           delay={200}
         />
         <StatCard
           icon={TrendingDown}
-          label="Minimo COVs"
-          value="15"
+          label="Promedio COVs"
+          value={hasRealData ? String(stats.avgCOVs) : "15"}
           unit="ppm"
           status="safe"
           trend="down"
-          trendValue="12% menor"
+          trendValue="promedio últimas lecturas"
           delay={250}
         />
         <StatCard
           icon={AlertTriangle}
           label="Alertas Total"
-          value="12"
+          value={hasRealData ? String(stats.alertCount) : "12"}
           status="danger"
           delay={300}
         />

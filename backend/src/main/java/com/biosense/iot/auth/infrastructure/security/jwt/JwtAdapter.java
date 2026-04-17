@@ -15,7 +15,7 @@ import java.util.function.Function;
 @Service
 public class JwtAdapter implements TokenProviderPort {
 
-    @Value("${jwt.secret:BioSenseIoT_Clave_Muy_Larga_De_Seguridad_256_Bits_2026}")
+    @Value("${jwt.secret}")
     private String secret;
 
     @Value("${jwt.expiration:86400000}")

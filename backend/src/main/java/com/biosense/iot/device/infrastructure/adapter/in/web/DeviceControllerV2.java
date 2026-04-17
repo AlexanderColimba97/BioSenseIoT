@@ -37,6 +37,7 @@ public class DeviceControllerV2 {
                         .deviceId(device.getId())
                         .macAddress(device.getMacAddress())
                         .name(device.getName())
+                        .apiSecret(device.getApiSecret())
                         .build()
                 ))
                 .onErrorResume(e -> Mono.just(ResponseEntity.badRequest().body(

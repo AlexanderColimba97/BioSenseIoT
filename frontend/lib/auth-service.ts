@@ -88,7 +88,10 @@ export class AuthService {
 
   static logout(): void {
     localStorage.removeItem('auth_token');
-    GoogleAuth.signOut();
+    // GoogleAuth.signOut() sólo funciona en plataformas nativas
+    if (Capacitor.isNativePlatform()) {
+      GoogleAuth.signOut();
+    }
   }
 
   static getToken(): string | null {
