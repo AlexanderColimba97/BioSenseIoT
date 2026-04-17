@@ -24,6 +24,30 @@ public class R2dbcSensorRepositoryAdapter implements DeviceRepositoryPort, Senso
     }
 
     @Override
+    public Mono<String> getApiSecretByMacAddress(String macAddress) {
+        return databaseClient.sql("SELECT api_secret FROM devices WHERE mac_address = :mac")
+                .bind("mac", macAddress.toUpperCase())
+                .map(row -> row.get("api_secret", String.class))
+                .first();
+    }
+
+    @Override
+    public Mono<Void> storeApiSecretByMacAddress(String macAddress, String apiSecret) {
+        return databaseClient.sql("UPDATE devices SET api_secret = :apiSecret WHERE mac_address = :mac AND api_secret IS NULL")
+                .bind("mac", macAddress.toUpperCase())
+                .bind("apiSecret", apiSecret)
+                .then();
+    }
+
+    @Override
+    public Mono<Integer> getUserIdByDeviceId(Integer deviceId) {
+        return databaseClient.sql("SELECT user_id FROM devices WHERE id = :deviceId")
+                .bind("deviceId", deviceId)
+                .map(row -> row.get("user_id", Integer.class))
+                .first();
+    }
+
+    @Override
     public Mono<SensorReadingDomain> save(SensorReadingDomain reading) {
         return databaseClient.sql(
                 "INSERT INTO sensor_readings (device_id, mq4_value, mq7_value, mq135_value, timestamp) " +

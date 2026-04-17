@@ -60,7 +60,7 @@ public class SecurityConfig {
         corsConfig.setMaxAge(3600L);
         corsConfig.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         corsConfig
-                .setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "x-requested-with", "Cache-Control"));
+                .setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "x-requested-with", "Cache-Control", "X-BioSense-Key"));
         corsConfig.setAllowCredentials(true);
         corsConfig.setExposedHeaders(Arrays.asList("Authorization"));
 
