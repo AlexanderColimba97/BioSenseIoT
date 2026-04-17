@@ -19,7 +19,7 @@ Preferences preferences;
 
 bool bleActive = false;
 String macAddress = "";
-String apiSecret = "sk_prod_biosense123xyz";
+String apiSecret = ""; // Loaded from NVS after provisioning
 
 // ================= SENSOR CALIBRATION (APPROX) =================
 // Resistencias de Carga en los módulos típicos (10k a 20k ohm)
@@ -79,21 +79,29 @@ class MyCallbacks: public BLECharacteristicCallbacks {
       String payload = String(value.c_str());
       Serial.println("📥 BLE recibido: " + payload);
 
-      int separatorIdx = payload.indexOf(',');
-      if (separatorIdx > 0) {
-        String ssid = payload.substring(0, separatorIdx);
-        String pass = payload.substring(separatorIdx + 1);
+      int firstSep = payload.indexOf(',');
+      if (firstSep > 0) {
+        String ssid = payload.substring(0, firstSep);
+        String rest = payload.substring(firstSep + 1);
+
+        int secondSep = rest.indexOf(',');
+        String pass = (secondSep > 0) ? rest.substring(0, secondSep) : rest;
+        String secret = (secondSep > 0) ? rest.substring(secondSep + 1) : "";
 
         preferences.begin("wifi_creds", false);
         preferences.putString("ssid", ssid);
         preferences.putString("pass", pass);
-        preferences.end();   
+        if (secret.length() > 0) {
+          preferences.putString("api_secret", secret);
+          Serial.println("🔑 API secret guardado.");
+        }
+        preferences.end();
 
         Serial.println("✅ Credenciales guardadas desde la App. Reiniciando el ESP32 para conectarse al WiFi...");
         delay(1000);
         ESP.restart();
       } else {
-        Serial.println("❌ Formato incorrecto. Se esperaba: SSID,PASSWORD");
+        Serial.println("❌ Formato incorrecto. Se esperaba: SSID,PASSWORD o SSID,PASSWORD,API_SECRET");
       }
     }
   }
@@ -163,6 +171,7 @@ void setup() {
   preferences.begin("wifi_creds", true);
   String ssid = preferences.getString("ssid", "");
   String pass = preferences.getString("pass", "");
+  apiSecret = preferences.getString("api_secret", "");
   preferences.end();
 
   if (ssid == "") {

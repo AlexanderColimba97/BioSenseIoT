@@ -91,14 +91,16 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
 
     setLoading(true);
     try {
-      // 1. Send WiFi info via BLE
-      const payload = `${wifiSsid},${wifiPassword}`;
+      // 1. Register mapped MAC in Backend and get the device's api_secret
+      const device = await linkDevice(macAddress.toUpperCase(), deviceName);
+      
+      // 2. Send WiFi credentials + api_secret via BLE
+      //    Format: "SSID,PASSWORD,API_SECRET"
+      const apiSecret = device.apiSecret || '';
+      const payload = `${wifiSsid},${wifiPassword},${apiSecret}`;
       const data = new TextEncoder().encode(payload);
       const dataView = new DataView(data.buffer);
       await BleClient.write(selectedDevice.deviceId, SERVICE_UUID, CHARACTERISTIC_UUID, dataView);
-      
-      // 2. Register mapped MAC in Backend Context
-      await linkDevice(macAddress.toUpperCase(), deviceName);
       
       toast.success('✅ Dispositivo emparejado y wifi configurado');
       onSuccess();
