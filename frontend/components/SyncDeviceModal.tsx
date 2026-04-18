@@ -27,6 +27,7 @@ interface SyncDeviceModalProps {
 
 const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+const MAC_REGEX = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/;
 
 type NativeDevice = { deviceId: string; name?: string };
 
@@ -96,19 +97,28 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
     }
   };
 
+
   // Web fallback: vincular dispositivo manualmente ingresando la MAC
   const handleWebManualLink = async () => {
-    if (!macAddress.trim() || !deviceName.trim()) {
+    const trimmedMac = macAddress.trim().toUpperCase();
+    const trimmedName = deviceName.trim();
+
+    if (!trimmedMac || !trimmedName) {
       toast.error('Por favor ingresa la MAC Address y el nombre del dispositivo');
       return;
     }
+    if (!MAC_REGEX.test(trimmedMac)) {
+      toast.error(`Formato de MAC incorrecto: "${trimmedMac}". Usa el formato AA:BB:CC:DD:EE:FF`);
+      return;
+    }
+
     setLoading(true);
     try {
-      await linkDevice(macAddress.toUpperCase(), deviceName);
+      await linkDevice(trimmedMac, trimmedName);
       toast.success('✅ Dispositivo vinculado manualmente');
       onSuccess();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Error al vincular');
+      toast.error(error instanceof Error ? error.message : 'Error al vincular el dispositivo');
     } finally {
       setLoading(false);
     }
@@ -137,16 +147,16 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
       const dataView = new DataView(data.buffer);
       await BleClient.write(selectedDevice.deviceId, SERVICE_UUID, CHARACTERISTIC_UUID, dataView);
 
-      toast.success('✅ Dispositivo emparejado y wifi configurado');
+      toast.success('✅ Dispositivo emparejado y WiFi configurado');
       onSuccess();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error en la sincronización');
     } finally {
       setLoading(false);
-      if (selectedDevice) {
+      if (selectedDevice && BleClient) {
         try {
           await BleClient.disconnect(selectedDevice.deviceId);
-        } catch (e) {}
+        } catch { /* ignorar errores de desconexión */ }
       }
     }
   };

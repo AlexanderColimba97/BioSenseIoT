@@ -1,36 +1,77 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { 
-  User, 
   Pencil, 
-  Users, 
-  PawPrint, 
-  Home, 
   Moon, 
   Globe, 
-  Ruler,
   LogOut,
   ChevronDown,
   Bell,
   Smartphone,
-  Shield
+  Shield,
+  Plus,
+  LayoutDashboard,
+  Trash2
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { cn } from "@/lib/utils"
-import { DeviceLinkCard } from "../device-link-card"
 import { AuthService } from "@/lib/auth-service"
+import { getUserDevices, unlinkDevice, type Device } from "@/lib/device-service"
+import SyncDeviceModal from "@/components/SyncDeviceModal"
+import { toast } from "sonner"
 
-export function ProfileView() {
+interface ProfileViewProps {
+  onNavigateToDashboard?: () => void
+}
+
+export function ProfileView({ onNavigateToDashboard }: ProfileViewProps) {
   const [darkMode, setDarkMode] = useState(false)
   const [notifications, setNotifications] = useState(true)
   const [language, setLanguage] = useState("Español")
-  
+  const [showSyncModal, setShowSyncModal] = useState(false)
+  const [devices, setDevices] = useState<Device[]>([])
+  const [loadingDevices, setLoadingDevices] = useState(false)
+
+  const loadDevices = async () => {
+    setLoadingDevices(true)
+    try {
+      const data = await getUserDevices()
+      setDevices(data)
+    } catch (error) {
+      console.error('Error loading devices:', error)
+    } finally {
+      setLoadingDevices(false)
+    }
+  }
+
+  useEffect(() => {
+    loadDevices()
+  }, [])
+
   const handleLogout = () => {
     AuthService.logout();
     window.location.reload();
   };
+
+  const handleSyncSuccess = () => {
+    setShowSyncModal(false)
+    toast.success('Dispositivo vinculado correctamente')
+    localStorage.setItem('device_activated', 'true')
+    localStorage.setItem('device_status', 'active')
+    loadDevices()
+  }
+
+  const handleUnlink = async (deviceId: number) => {
+    if (!confirm('¿Deseas desvincular este dispositivo?')) return
+    try {
+      await unlinkDevice(deviceId)
+      toast.success('Dispositivo desvinculado')
+      loadDevices()
+    } catch (error) {
+      toast.error('Error al desvincular el dispositivo')
+    }
+  }
 
   return (
     <div className="pb-24 animate-in fade-in duration-500">
@@ -57,23 +98,78 @@ export function ProfileView() {
         </div>
       </div>
 
-      {/* HARDWARE: La sección más importante para el usuario */}
+      {/* HARDWARE: Device list */}
       <div className="px-4 mb-6">
-        <div className="flex items-center gap-2 mb-3">
-          <Smartphone className="w-5 h-5 text-primary" />
-          <h2 className="font-bold text-lg">Vinculación de Hardware</h2>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Smartphone className="w-5 h-5 text-primary" />
+            <h2 className="font-bold text-lg">Mis Dispositivos</h2>
+          </div>
+          <Button
+            size="sm"
+            className="gap-1"
+            onClick={() => setShowSyncModal(true)}
+          >
+            <Plus className="w-4 h-4" />
+            Sincronizar
+          </Button>
         </div>
-        <DeviceLinkCard />
+
+        {loadingDevices ? (
+          <div className="text-sm text-muted-foreground py-6 text-center">
+            Cargando dispositivos...
+          </div>
+        ) : devices.length === 0 ? (
+          <div className="bg-card rounded-3xl border border-dashed border-border p-6 text-center space-y-3">
+            <Smartphone className="w-10 h-10 text-muted-foreground mx-auto" />
+            <p className="text-sm text-muted-foreground">
+              No tienes dispositivos vinculados. Pulsa "Sincronizar" para añadir tu ESP32.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {devices.map((device) => (
+              <div
+                key={device.id}
+                className="bg-card rounded-2xl border border-border/50 p-4 flex items-center justify-between shadow-sm"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm">{device.name}</p>
+                  <p className="text-xs text-muted-foreground font-mono">{device.macAddress}</p>
+                </div>
+                <div className="flex gap-2 ml-3">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="gap-1"
+                    onClick={onNavigateToDashboard}
+                  >
+                    <LayoutDashboard className="w-3.5 h-3.5" />
+                    Dashboard
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => handleUnlink(device.id)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* CONFIGURACIÓN: Agrupada por funcionalidad */}
       <div className="px-4 space-y-6">
-        
+
         {/* Notificaciones y Preferencias */}
         <section>
           <h2 className="font-bold text-lg mb-3 px-1">Preferencias</h2>
           <div className="bg-card rounded-3xl border border-border/50 overflow-hidden shadow-sm">
-            
+
             {/* Modo Oscuro */}
             <div className="flex items-center justify-between p-4 border-b border-border/30">
               <div className="flex items-center gap-3">
@@ -133,8 +229,8 @@ export function ProfileView() {
 
         {/* Botón de Salida */}
         <div className="pt-2">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={handleLogout}
             className="w-full h-14 rounded-2xl border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600 font-bold gap-2"
           >
@@ -143,6 +239,13 @@ export function ProfileView() {
           </Button>
         </div>
       </div>
+
+      {showSyncModal && (
+        <SyncDeviceModal
+          onClose={() => setShowSyncModal(false)}
+          onSuccess={handleSyncSuccess}
+        />
+      )}
     </div>
   )
 }
