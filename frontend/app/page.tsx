@@ -76,7 +76,7 @@ export default function AirQualityApp() {
       case "recomendaciones":
         return <RecommendationsView data={data} />
       case "perfil":
-        return <ProfileView />
+        return <ProfileView onNavigateToDashboard={() => setCurrentView("dashboard")} />
       default:
         return (
           <DashboardView 
