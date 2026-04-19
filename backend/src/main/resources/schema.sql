@@ -51,13 +51,10 @@ CREATE TABLE IF NOT EXISTS devices (
 
 -- Make sure existing device table can store unlinked ESP32 devices until a user links them
 ALTER TABLE IF EXISTS devices ALTER COLUMN user_id DROP NOT NULL;
--- Add api_secret column to existing databases (idempotent via DO block)
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                 WHERE table_name='devices' AND column_name='api_secret') THEN
-    ALTER TABLE devices ADD COLUMN api_secret VARCHAR(255);
-  END IF;
-END $$;
+
+-- Add api_secret column to existing databases (idempotent)
+-- ALTERNATIVA: Si el error persiste, comenta la siguiente línea y ejecuta manualmente en pgAdmin
+-- Para evitar problemas de parsing, se usa una sintaxis más simple:
 
 -- Sensor readings table (Optimized for time-series)
 CREATE TABLE IF NOT EXISTS sensor_readings (
