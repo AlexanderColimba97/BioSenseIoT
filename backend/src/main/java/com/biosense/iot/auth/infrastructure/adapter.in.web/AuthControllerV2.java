@@ -46,4 +46,17 @@ public class AuthControllerV2 {
                 .map(ResponseEntity::ok)
                 .onErrorResume(e -> Mono.just(ResponseEntity.badRequest().build()));
     }
+
+    @PostMapping("/refresh")
+    public Mono<ResponseEntity<AuthResponse>> refreshToken(@RequestBody Map<String, String> request) {
+        String refreshToken = request.get("refreshToken");
+        if (refreshToken == null || refreshToken.isEmpty()) {
+            return Mono.just(ResponseEntity.status(401).body(null));
+        }
+        
+        // Por ahora, devolveremos un error 401 que indica que se debe hacer login nuevamente
+        // En una implementación completa, validarías el refresh token y devolverías un nuevo access token
+        log.warn("Refresh token endpoint called - implementar lógica de refresh");
+        return Mono.just(ResponseEntity.status(401).build());
+    }
 }

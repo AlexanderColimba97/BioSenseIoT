@@ -1,8 +1,6 @@
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://biosenseiot-production-e061.up.railway.app').replace(/\/+$/, '')
+import { AuthService } from './auth-service';
 
-function getAuthToken(): string {
-  return localStorage.getItem('auth_token') || localStorage.getItem('token') || ''
-}
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://biosenseiot-production-e061.up.railway.app').replace(/\/+$/, '')
 
 export interface Device {
   id: number;
@@ -48,10 +46,8 @@ async function retryFetch(
 }
 
 export async function linkDevice(macAddress: string, deviceName: string): Promise<Device> {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('No estás autenticado. Por favor inicia sesión nuevamente.');
-  }
+  // Obtener token válido (refresca si es necesario)
+  const token = await AuthService.getValidToken();
 
   if (!macAddress || !deviceName) {
     throw new Error('MAC Address y Nombre del dispositivo son requeridos');
@@ -69,6 +65,11 @@ export async function linkDevice(macAddress: string, deviceName: string): Promis
 
     if (!response.ok) {
       let errorMsg = 'Error al vincular el dispositivo';
+      
+      if (response.status === 401) {
+        throw new Error('Tu sesión expiró. Por favor inicia sesión nuevamente.');
+      }
+      
       try {
         const error = await response.json();
         errorMsg = error.error || error.message || errorMsg;
@@ -102,10 +103,9 @@ export async function linkDevice(macAddress: string, deviceName: string): Promis
 }
 
 export async function getUserDevices(): Promise<Device[]> {
-  const token = getAuthToken();
-  if (!token) return [];
-
   try {
+    const token = await AuthService.getValidToken();
+
     const response = await retryFetch(`${API_URL}/api/v2/devices/my-devices`, {
       headers: {
         'Authorization': `Bearer ${token}`
@@ -126,11 +126,13 @@ export async function getUserDevices(): Promise<Device[]> {
 
 export async function getDeviceReadings(deviceId: number, limit = 100): Promise<SensorReading[]> {
   try {
+    const token = await AuthService.getValidToken();
+    
     const response = await retryFetch(
       `${API_URL}/api/v2/devices/${deviceId}/readings?limit=${limit}`,
       {
         headers: {
-          'Authorization': `Bearer ${getAuthToken()}`
+          'Authorization': `Bearer ${token}`
         }
       }
     );
@@ -145,10 +147,12 @@ export async function getDeviceReadings(deviceId: number, limit = 100): Promise<
 
 export async function unlinkDevice(deviceId: number): Promise<void> {
   try {
+    const token = await AuthService.getValidToken();
+    
     const response = await retryFetch(`${API_URL}/api/v2/devices/${deviceId}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${getAuthToken()}`
+        'Authorization': `Bearer ${token}`
       }
     });
 
