@@ -4,6 +4,7 @@ import com.biosense.iot.auth.domain.model.UserDomain;
 import com.biosense.iot.auth.domain.port.in.RegisterUseCase;
 import com.biosense.iot.auth.domain.port.out.UserRepositoryPort;
 import com.biosense.iot.auth.domain.port.out.TokenProviderPort;
+import com.biosense.iot.auth.infrastructure.security.jwt.JwtAdapter;
 import com.biosense.iot.dto.AuthResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -18,6 +19,7 @@ public class RegisterUseCaseImpl implements RegisterUseCase {
 
     private final UserRepositoryPort userRepositoryPort;
     private final TokenProviderPort tokenProviderPort;
+    private final JwtAdapter jwtAdapter;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -34,11 +36,13 @@ public class RegisterUseCaseImpl implements RegisterUseCase {
                             Instant.now()
                     );
                     return userRepositoryPort.save(newUser)
-                            .map(user -> new AuthResponse(
-                                    tokenProviderPort.generateToken(user.getEmail()),
-                                    user.getEmail(),
-                                    user.getFullName()
-                            ));
+                            .map(user -> AuthResponse.builder()
+                                    .accessToken(jwtAdapter.generateAccessToken(user.getEmail()))
+                                    .refreshToken(jwtAdapter.generateRefreshToken(user.getEmail()))
+                                    .email(user.getEmail())
+                                    .fullName(user.getFullName())
+                                    .build()
+                            );
                 }));
     }
 }

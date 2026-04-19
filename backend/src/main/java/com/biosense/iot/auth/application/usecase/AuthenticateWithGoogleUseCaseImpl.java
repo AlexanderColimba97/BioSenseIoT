@@ -5,6 +5,7 @@ import com.biosense.iot.auth.domain.port.in.AuthenticateWithGoogleUseCase;
 import com.biosense.iot.auth.domain.port.out.GoogleAuthPort;
 import com.biosense.iot.auth.domain.port.out.TokenProviderPort;
 import com.biosense.iot.auth.domain.port.out.UserRepositoryPort;
+import com.biosense.iot.auth.infrastructure.security.jwt.JwtAdapter;
 import com.biosense.iot.dto.AuthResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,14 +22,17 @@ public class AuthenticateWithGoogleUseCaseImpl implements AuthenticateWithGoogle
     private final GoogleAuthPort googleAuthPort;
     private final UserRepositoryPort userRepositoryPort;
     private final TokenProviderPort tokenProviderPort;
+    private final JwtAdapter jwtAdapter;
 
     public AuthenticateWithGoogleUseCaseImpl(
             GoogleAuthPort googleAuthPort,
             UserRepositoryPort userRepositoryPort,
-            TokenProviderPort tokenProviderPort) {
+            TokenProviderPort tokenProviderPort,
+            JwtAdapter jwtAdapter) {
         this.googleAuthPort = googleAuthPort;
         this.userRepositoryPort = userRepositoryPort;
         this.tokenProviderPort = tokenProviderPort;
+        this.jwtAdapter = jwtAdapter;
     }
 
     @Override
@@ -51,7 +55,8 @@ public class AuthenticateWithGoogleUseCaseImpl implements AuthenticateWithGoogle
                             }));
                 })
                 .map(user -> AuthResponse.builder()
-                        .accessToken(tokenProviderPort.generateToken(user.getEmail()))
+                        .accessToken(jwtAdapter.generateAccessToken(user.getEmail()))
+                        .refreshToken(jwtAdapter.generateRefreshToken(user.getEmail()))
                         .email(user.getEmail())
                         .fullName(user.getFullName())
                         .build());
