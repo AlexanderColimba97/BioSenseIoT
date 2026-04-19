@@ -232,36 +232,72 @@ void initializeBLE() {
   Serial.println("\n📡 ===== INICIANDO MODO SINCRONIZACIÓN BLE =====");
   
   String bleName = "BioSense-" + macAddress.substring(12, 17);
+  Serial.println("   Nombre BLE: " + bleName);
+  Serial.println("   MAC: " + macAddress);
   
+  // Inicializar BLE
   BLEDevice::init(bleName.c_str());
-  BLEServer *pServer = BLEDevice::createServer();
-  BLEService *pService = pServer->createService(SERVICE_UUID);
+  BLEDevice::setMTU(517);
   
+  // Crear servidor
+  BLEServer *pServer = BLEDevice::createServer();
+  if (!pServer) {
+    Serial.println("❌ FALLO: No se pudo crear servidor BLE");
+    return;
+  }
+  
+  // Crear servicio
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+  if (!pService) {
+    Serial.println("❌ FALLO: No se pudo crear servicio BLE");
+    return;
+  }
+  
+  // Crear característica
   BLECharacteristic *pCharacteristic = pService->createCharacteristic(
     CHARACTERISTIC_UUID,
     BLECharacteristic::PROPERTY_READ |
-    BLECharacteristic::PROPERTY_WRITE
+    BLECharacteristic::PROPERTY_WRITE |
+    BLECharacteristic::PROPERTY_NOTIFY |
+    BLECharacteristic::PROPERTY_INDICATE
   );
   
+  if (!pCharacteristic) {
+    Serial.println("❌ FALLO: No se pudo crear característica BLE");
+    return;
+  }
+  
+  // Configurar callback y valor inicial
   pCharacteristic->setCallbacks(new BLECallbacks());
   pCharacteristic->setValue(macAddress.c_str());
   
+  // Agregar descriptor para notificaciones
+  pCharacteristic->addDescriptor(new BLE2902());
+  
+  // Iniciar servicio
   pService->start();
   
+  // Configurar advertising
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
   pAdvertising->setScanResponse(true);
+  pAdvertising->setAdvertisementType(ADV_TYPE_IND);
   pAdvertising->setMinPreferred(0x06);
+  pAdvertising->setMaxPreferred(0x12);
+  
+  // Iniciar advertising
   BLEDevice::startAdvertising();
   
-  Serial.println("✅ BLE Iniciado correctamente");
-  Serial.println("📱 INSTRUCCIONES:");
-  Serial.println("   1. Abre la App en tu móvil");
+  Serial.println("\n✅ BLE COMPLETAMENTE OPERATIVO");
+  Serial.println("📱 INSTRUCCIONES PARA SINCRONIZAR:");
+  Serial.println("   1. Abre la App BioSense en tu Android");
   Serial.println("   2. Ve a 'MI PERFIL'");
-  Serial.println("   3. Haz clic en 'SINCRONIZAR'");
-  Serial.println("   4. Selecciona este dispositivo: " + bleName);
-  Serial.println("   5. Ingresa tus credenciales WiFi");
-  Serial.println("⏱️  El dispositivo se reiniciará automáticamente\n");
+  Serial.println("   3. Toca 'SINCRONIZAR'");
+  Serial.println("   4. Toca 'Escanear Bluetooth'");
+  Serial.println("   5. Selecciona: " + bleName);
+  Serial.println("   6. Completa los campos y toca 'Vincular'");
+  Serial.println("   7. El ESP32 se reiniciará automáticamente\n");
+  Serial.println("⏰ Esperando sincronización...\n");
 }
 
 // ================= FUNCIÓN: Conectar WiFi =================

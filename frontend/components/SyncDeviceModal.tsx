@@ -9,15 +9,6 @@ import { linkDevice } from '@/lib/device-service';
 import { Capacitor } from '@capacitor/core';
 import { Bluetooth, BluetoothOff } from 'lucide-react';
 
-// BLE sólo se importa cuando estamos en una plataforma nativa para evitar
-// que el módulo rompa en el navegador
-let BleClient: any = null;
-if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
-  import('@capacitor-community/bluetooth-le').then((mod) => {
-    BleClient = mod.BleClient;
-  });
-}
-
 const IS_WEB = typeof window !== 'undefined' && !Capacitor.isNativePlatform();
 
 interface SyncDeviceModalProps {
@@ -31,6 +22,15 @@ const MAC_REGEX = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/;
 
 type NativeDevice = { deviceId: string; name?: string };
 
+// BLE Client lazy loader - espera a que esté disponible
+let BleClientPromise: Promise<any> | null = null;
+const getBleClient = async () => {
+  if (!BleClientPromise && typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
+    BleClientPromise = import('@capacitor-community/bluetooth-le').then((mod) => mod.BleClient);
+  }
+  return BleClientPromise;
+};
+
 export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalProps) {
   const [devices, setDevices] = useState<NativeDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<NativeDevice | null>(null);
@@ -42,28 +42,61 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
   const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
-    if (IS_WEB || !BleClient) return;
-    BleClient.initialize().catch((err: any) => {
-      console.error('BLE Init error', err);
-      toast.error('Bluetooth no está disponible');
-    });
+    if (IS_WEB) return;
+    
+    const initBle = async () => {
+      try {
+        const BleClient = await getBleClient();
+        if (!BleClient) {
+          toast.error('Bluetooth no está disponible');
+          return;
+        }
+        
+        // Inicializar con timeout
+        const initPromise = BleClient.initialize();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('BLE initialization timeout')), 10000)
+        );
+        
+        await Promise.race([initPromise, timeoutPromise]);
+        
+        // Verificar y solicitar permisos
+        const permission = await Capacitor.Plugins.Permissions?.query?.({ name: 'bluetooth' });
+        if (permission?.state === 'denied') {
+          toast.warning('⚠️ Permiso de Bluetooth denegado');
+        }
+      } catch (err) {
+        console.error('BLE initialization failed:', err);
+        toast.error('No se pudo inicializar Bluetooth');
+      }
+    };
+    
+    initBle();
   }, []);
 
   const handleScan = async () => {
-    if (IS_WEB || !BleClient) {
+    if (IS_WEB) {
       toast.error('Bluetooth no está disponible en el navegador. Usa la app nativa en tu Android.');
       return;
     }
+    
     try {
+      const BleClient = await getBleClient();
+      if (!BleClient) {
+        toast.error('Bluetooth no está disponible');
+        return;
+      }
+      
       setScanning(true);
       setDevices([]);
 
       await BleClient.requestLEScan(
         { services: [SERVICE_UUID] },
         (result: any) => {
-          if (result.device.name?.startsWith('BioSense')) {
+          if (result?.device?.name?.startsWith('BioSense')) {
             setDevices((prev) => {
-              if (prev.find((d) => d.deviceId === result.device.deviceId)) return prev;
+              const exists = prev.find((d) => d.deviceId === result.device.deviceId);
+              if (exists) return prev;
               return [...prev, result.device];
             });
           }
@@ -71,27 +104,68 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
       );
 
       setTimeout(async () => {
-        await BleClient.stopLEScan();
+        try {
+          await BleClient.stopLEScan();
+        } catch {
+          // Ignore stop errors
+        }
         setScanning(false);
-      }, 5000);
+      }, 8000);
     } catch (error) {
-      toast.error('Error al escanear Bluetooth');
+      console.error('Scan error:', error);
+      toast.error('Error al escanear: ' + (error instanceof Error ? error.message : 'Unknown'));
       setScanning(false);
     }
   };
 
   const handleSelectDevice = async (device: NativeDevice) => {
-    setSelectedDevice(device);
     try {
+      const BleClient = await getBleClient();
+      if (!BleClient) {
+        toast.error('Bluetooth no está disponible');
+        return;
+      }
+      
+      setSelectedDevice(device);
       setLoading(true);
-      await BleClient.connect(device.deviceId);
-      const dataView = await BleClient.read(device.deviceId, SERVICE_UUID, CHARACTERISTIC_UUID);
+      
+      // Desconectar primero por si está conectado
+      try {
+        await BleClient.disconnect(device.deviceId);
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch {
+        // Ignore disconnect errors
+      }
+      
+      // Conectar con timeout
+      const connectPromise = BleClient.connect(device.deviceId);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Connection timeout')), 15000)
+      );
+      
+      await Promise.race([connectPromise, timeoutPromise]);
+      
+      // Leer MAC con timeout
+      const readPromise = BleClient.read(device.deviceId, SERVICE_UUID, CHARACTERISTIC_UUID);
+      const readTimeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Read timeout')), 10000)
+      );
+      
+      const dataView = await Promise.race([readPromise, readTimeoutPromise]);
       const dec = new TextDecoder();
       const hwMac = dec.decode(dataView);
+      
+      if (!hwMac || hwMac.length === 0) {
+        throw new Error('MAC Address vacía recibida');
+      }
+      
       setMacAddress(hwMac);
-      toast.success('Dispositivo seleccionado');
+      toast.success('✅ Dispositivo conectado');
     } catch (err) {
-      toast.error('Error conectando al dispositivo');
+      console.error('Device selection error:', err);
+      setSelectedDevice(null);
+      const errorMsg = err instanceof Error ? err.message : 'Error desconocido';
+      toast.error('No se pudo conectar: ' + errorMsg);
     } finally {
       setLoading(false);
     }
@@ -130,34 +204,64 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
       return;
     }
     if (!macAddress.trim() || !deviceName.trim() || !wifiSsid.trim()) {
-      toast.error('Por favor completa todos los campos (WiFi y Nombre)');
+      toast.error('Por favor completa todos los campos');
       return;
     }
 
     setLoading(true);
     try {
-      // 1. Register mapped MAC in Backend and get the device's api_secret
+      const BleClient = await getBleClient();
+      if (!BleClient) {
+        throw new Error('Bluetooth no disponible');
+      }
+      
+      // 1. Vincular en backend y obtener apiSecret
+      toast.info('Vinculando dispositivo en servidor...');
       const device = await linkDevice(macAddress.toUpperCase(), deviceName);
-
-      // 2. Send WiFi credentials + api_secret via BLE
-      //    Format: "SSID,PASSWORD,API_SECRET"
-      const apiSecret = device.apiSecret || '';
-      const payload = `${wifiSsid},${wifiPassword},${apiSecret}`;
+      
+      if (!device.apiSecret) {
+        throw new Error('El servidor no devolvió el API Secret');
+      }
+      
+      // 2. Enviar credenciales via BLE con timeout
+      toast.info('Enviando configuración WiFi al ESP32...');
+      
+      const payload = `${wifiSsid},${wifiPassword},${device.apiSecret}`;
       const data = new TextEncoder().encode(payload);
       const dataView = new DataView(data.buffer);
-      await BleClient.write(selectedDevice.deviceId, SERVICE_UUID, CHARACTERISTIC_UUID, dataView);
-
-      toast.success('✅ Dispositivo emparejado y WiFi configurado');
-      onSuccess();
+      
+      const writePromise = BleClient.write(
+        selectedDevice.deviceId,
+        SERVICE_UUID,
+        CHARACTERISTIC_UUID,
+        dataView
+      );
+      
+      const writeTimeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Write timeout - dispositivo no responde')), 20000)
+      );
+      
+      await Promise.race([writePromise, writeTimeoutPromise]);
+      
+      toast.success('✅ Sincronización exitosa!\nEl ESP32 se reiniciará en 2 segundos');
+      
+      // Desconectar después del éxito
+      setTimeout(() => {
+        try {
+          BleClient.disconnect(selectedDevice.deviceId).catch(() => {});
+        } catch {}
+      }, 1000);
+      
+      setTimeout(() => {
+        onSuccess();
+      }, 2000);
+      
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Error en la sincronización');
+      console.error('Sync error:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
+      toast.error('Sincronización fallida: ' + errorMsg);
     } finally {
       setLoading(false);
-      if (selectedDevice && BleClient) {
-        try {
-          await BleClient.disconnect(selectedDevice.deviceId);
-        } catch { /* ignorar errores de desconexión */ }
-      }
     }
   };
 
