@@ -9,8 +9,6 @@ import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.reactive.CorsWebFilter;
-import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 import org.springframework.http.HttpMethod;
 
 import javax.crypto.spec.SecretKeySpec;
@@ -36,7 +34,20 @@ public class SecurityConfig {
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
-                .cors(cors -> cors.disable())
+                .cors(cors -> cors.configurationSource(request -> {
+                    CorsConfiguration corsConfig = new CorsConfiguration();
+                    List<String> allowedOrigins = Arrays.stream(allowedOriginsEnv.split(","))
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .collect(Collectors.toList());
+                    corsConfig.setAllowedOrigins(allowedOrigins);
+                    corsConfig.setMaxAge(3600L);
+                    corsConfig.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+                    corsConfig.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "x-requested-with", "Cache-Control", "X-BioSense-Key"));
+                    corsConfig.setAllowCredentials(true);
+                    corsConfig.setExposedHeaders(Arrays.asList("Authorization"));
+                    return corsConfig;
+                }))
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers("/api/v2/auth/**").permitAll()
                         .pathMatchers(HttpMethod.POST, "/api/v2/sensors/reading").permitAll()
@@ -46,28 +57,6 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtDecoder(jwtDecoder())));
         return http.build();
-    }
-
-    @Bean
-    public CorsWebFilter corsWebFilter() {
-        CorsConfiguration corsConfig = new CorsConfiguration();
-
-        List<String> allowedOrigins = Arrays.stream(allowedOriginsEnv.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toList());
-        corsConfig.setAllowedOrigins(allowedOrigins);
-        corsConfig.setMaxAge(3600L);
-        corsConfig.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        corsConfig
-                .setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "x-requested-with", "Cache-Control", "X-BioSense-Key"));
-        corsConfig.setAllowCredentials(true);
-        corsConfig.setExposedHeaders(Arrays.asList("Authorization"));
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", corsConfig);
-
-        return new CorsWebFilter(source);
     }
 
     @Bean
