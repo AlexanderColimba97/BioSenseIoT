@@ -5,6 +5,7 @@ import com.biosense.iot.auth.domain.model.UserDomain;
 import com.biosense.iot.auth.domain.port.out.GoogleAuthPort;
 import com.biosense.iot.auth.domain.port.out.TokenProviderPort;
 import com.biosense.iot.auth.domain.port.out.UserRepositoryPort;
+import com.biosense.iot.auth.infrastructure.security.jwt.JwtAdapter;
 import com.biosense.iot.dto.AuthResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,15 +24,21 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class AuthenticateWithGoogleUseCaseTest {
 
-    @Mock private GoogleAuthPort googleAuthPort;
-    @Mock private UserRepositoryPort userRepositoryPort;
-    @Mock private TokenProviderPort tokenProviderPort;
+    @Mock
+    private GoogleAuthPort googleAuthPort;
+    @Mock
+    private UserRepositoryPort userRepositoryPort;
+    @Mock
+    private TokenProviderPort tokenProviderPort;
+    @Mock
+    private JwtAdapter jwtAdapter;
 
     private AuthenticateWithGoogleUseCaseImpl useCase;
 
     @BeforeEach
     void setUp() {
-        useCase = new AuthenticateWithGoogleUseCaseImpl(googleAuthPort, userRepositoryPort, tokenProviderPort);
+        useCase = new AuthenticateWithGoogleUseCaseImpl(googleAuthPort, userRepositoryPort, tokenProviderPort,
+                jwtAdapter);
     }
 
     @Test
@@ -44,14 +51,14 @@ class AuthenticateWithGoogleUseCaseTest {
         when(googleAuthPort.verifyToken(mockIdToken)).thenReturn(Mono.just(identity));
         when(userRepositoryPort.findByGoogleIdOrEmail(anyString(), anyString())).thenReturn(Mono.empty());
         when(userRepositoryPort.save(any(UserDomain.class))).thenReturn(Mono.just(newUser));
-        when(tokenProviderPort.generateToken(anyString())).thenReturn("jwt-token");
+        when(jwtAdapter.generateAccessToken(anyString())).thenReturn("access-token");
+        when(jwtAdapter.generateRefreshToken(anyString())).thenReturn("refresh-token");
 
         // Act & Assert
         StepVerifier.create(useCase.execute(mockIdToken))
-                .expectNextMatches(response -> 
-                    response.getEmail().equals("test@example.com") &&
-                    response.getAccessToken().equals("jwt-token")
-                )
+                .expectNextMatches(response -> response.getEmail().equals("test@example.com") &&
+                        response.getAccessToken().equals("access-token") &&
+                        response.getRefreshToken().equals("refresh-token"))
                 .verifyComplete();
 
         verify(userRepositoryPort, times(1)).save(any(UserDomain.class));
@@ -67,11 +74,14 @@ class AuthenticateWithGoogleUseCaseTest {
         when(googleAuthPort.verifyToken(mockIdToken)).thenReturn(Mono.just(identity));
         when(userRepositoryPort.findByGoogleIdOrEmail(anyString(), anyString())).thenReturn(Mono.just(existingUser));
         when(userRepositoryPort.save(any(UserDomain.class))).thenReturn(Mono.just(existingUser));
-        when(tokenProviderPort.generateToken(anyString())).thenReturn("jwt-token");
+        when(jwtAdapter.generateAccessToken(anyString())).thenReturn("access-token");
+        when(jwtAdapter.generateRefreshToken(anyString())).thenReturn("refresh-token");
 
         // Act & Assert
         StepVerifier.create(useCase.execute(mockIdToken))
-                .expectNextMatches(response -> response.getEmail().equals("updated@example.com"))
+                .expectNextMatches(response -> response.getEmail().equals("updated@example.com") &&
+                        response.getAccessToken().equals("access-token") &&
+                        response.getRefreshToken().equals("refresh-token"))
                 .verifyComplete();
 
         verify(userRepositoryPort, times(1)).save(existingUser);
