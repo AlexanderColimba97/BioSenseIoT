@@ -47,13 +47,15 @@ async function retryFetch(
 
 export async function linkDevice(macAddress: string, deviceName: string): Promise<Device> {
   // Obtener token válido (refresca si es necesario)
-  const token = await AuthService.getValidToken();
-
-  if (!macAddress || !deviceName) {
-    throw new Error('MAC Address y Nombre del dispositivo son requeridos');
-  }
-
   try {
+    const token = await AuthService.getValidToken();
+    
+    if (!macAddress || !deviceName) {
+      throw new Error('MAC Address y Nombre del dispositivo son requeridos');
+    }
+
+    console.log('[Device] Vinculando dispositivo:', { macAddress, deviceName });
+
     const response = await retryFetch(`${API_URL}/api/v2/devices/link`, {
       method: 'POST',
       headers: {
@@ -67,6 +69,7 @@ export async function linkDevice(macAddress: string, deviceName: string): Promis
       let errorMsg = 'Error al vincular el dispositivo';
       
       if (response.status === 401) {
+        console.error('[Device] Error 401: Token inválido o expirado');
         throw new Error('Tu sesión expiró. Por favor inicia sesión nuevamente.');
       }
       

@@ -29,17 +29,41 @@ export class AuthService {
 
   /**
    * Valida si el token actual está expirado
+   * Con fallback robusto para Capacitor donde localStorage puede perder datos
    */
   static isTokenExpired(): boolean {
     if (typeof window === 'undefined') return true;
     
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     const expiry = localStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY);
-    if (!expiry) return true;
+    const storedAt = localStorage.getItem('TOKEN_STORED_AT');
+    
+    // Si no hay token, está expirado
+    if (!token) return true;
+    
+    // Si hay token pero no hay expiración guardada
+    if (!expiry) {
+      // Si se guardó recientemente (hace menos de 30 min), asumir que es válido
+      if (storedAt) {
+        const elapsed = Date.now() - parseInt(storedAt, 10);
+        if (elapsed < 1800000) { // 30 minutos
+          console.log('[Auth] Usando token con fallback de tiempo');
+          return false;
+        }
+      }
+      // Si no se guardó recientemente, considerar expirado
+      return true;
+    }
     
     const expiryTime = parseInt(expiry, 10);
     const now = Date.now();
     
     // Considera expirado si faltan menos de 60 segundos para expirar
+    // Solo si expiryTime es un número válido
+    if (isNaN(expiryTime)) {
+      return false; // fallback: si la fecha es inválida, no expirado
+    }
+    
     return now >= (expiryTime - 60000);
   }
 
@@ -70,6 +94,8 @@ export class AuthService {
         // Si falla el refresh, requiere login
         localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
         localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.TOKEN_EXPIRY);
+        localStorage.removeItem('TOKEN_STORED_AT');
         throw new Error('Tu sesión expiró. Por favor inicia sesión nuevamente.');
       }
     }
@@ -84,10 +110,12 @@ export class AuthService {
     const refreshToken = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
     
     if (!refreshToken) {
+      console.warn('[Auth] No hay refresh token disponible');
       throw new Error('No hay refresh token disponible');
     }
 
     try {
+      console.log('[Auth] Intentando refrescar token...');
       const response = await fetch(`${API_URL}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -95,16 +123,27 @@ export class AuthService {
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Auth] Refresh fallido:', response.status, errorText);
+        
         if (response.status === 401) {
           throw new Error('Refresh token inválido o expirado');
         }
-        throw new Error(`Error ${response.status}`);
+        throw new Error(`Error ${response.status}: ${errorText}`);
       }
 
       const data: AuthResponse = await response.json();
+      
+      if (!data.accessToken) {
+        console.error('[Auth] El servidor no devolvió accessToken');
+        throw new Error('Respuesta inválida del servidor');
+      }
+      
+      console.log('[Auth] Token refrescado exitosamente');
       this.storeTokens(data.accessToken, data.refreshToken || refreshToken);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error desconocido';
+      console.error('[Auth] Error refrescando token:', msg);
       throw new Error(`No se pudo refrescar token: ${msg}`);
     }
   }
@@ -115,24 +154,39 @@ export class AuthService {
   private static storeTokens(accessToken: string, refreshToken?: string): void {
     if (typeof window === 'undefined') return;
 
-    localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
-    if (refreshToken) {
-      localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
-    }
+    try {
+      localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+      if (refreshToken) {
+        localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+      }
 
-    // Calcular expiración (generalmente JWT expira en 1 hora)
-    const expiryTime = Date.now() + 3600000; // 1 hora
-    localStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, expiryTime.toString());
+      // Calcular expiración (generalmente JWT expira en 1 hora)
+      const expiryTime = Date.now() + 3600000; // 1 hora
+      localStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, expiryTime.toString());
+      
+      // Guardar marca de tiempo de cuando se almacenó (para Capacitor fallback)
+      localStorage.setItem('TOKEN_STORED_AT', Date.now().toString());
 
-    // Programar refresh automático 50 minutos después
-    if (this.tokenRefreshTimeout) {
-      clearTimeout(this.tokenRefreshTimeout);
+      console.log('[Auth] Tokens guardados exitosamente');
+      
+      // Verificar que se guardó correctamente
+      const saved = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      if (!saved) {
+        console.warn('[Auth] ⚠️ Warning: Token no se guardó en localStorage!');
+      }
+
+      // Programar refresh automático 50 minutos después
+      if (this.tokenRefreshTimeout) {
+        clearTimeout(this.tokenRefreshTimeout);
+      }
+      this.tokenRefreshTimeout = setTimeout(() => {
+        this.refreshToken().catch(() => {
+          console.warn('Auto-refresh de token falló');
+        });
+      }, 3000000); // 50 minutos
+    } catch (e) {
+      console.error('[Auth] Error al guardar tokens:', e);
     }
-    this.tokenRefreshTimeout = setTimeout(() => {
-      this.refreshToken().catch(() => {
-        console.warn('Auto-refresh de token falló');
-      });
-    }, 3000000); // 50 minutos
   }
 
   static async loginWithGoogle(): Promise<AuthResponse> {
@@ -220,6 +274,7 @@ export class AuthService {
     localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
     localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
     localStorage.removeItem(STORAGE_KEYS.TOKEN_EXPIRY);
+    localStorage.removeItem('TOKEN_STORED_AT');
     
     if (this.tokenRefreshTimeout) {
       clearTimeout(this.tokenRefreshTimeout);
