@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class SensorReadingRequest {
     private String macAddress;
+    private String readingId;
     private Double mq4;
     private Double mq7;
     private Double mq135;

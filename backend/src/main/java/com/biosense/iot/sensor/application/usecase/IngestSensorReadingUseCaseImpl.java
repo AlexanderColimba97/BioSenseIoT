@@ -24,18 +24,25 @@ public class IngestSensorReadingUseCaseImpl implements IngestSensorReadingUseCas
     private final DiagnosticRepositoryPort diagnosticRepositoryPort;
 
     @Override
-    public Mono<SensorReadingDomain> execute(String macAddress, String apiKey, Double mq4, Double mq7, Double mq135) {
+    public Mono<SensorReadingDomain> execute(String macAddress, String readingId, String apiKey, Double mq4, Double mq7,
+            Double mq135) {
+        if (readingId == null || readingId.isBlank()) {
+            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing readingId"));
+        }
+
         return validateOrRegisterApiKey(macAddress, apiKey)
                 .then(deviceRepositoryPort.getLinkedDeviceId(macAddress)
                         .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.FORBIDDEN, "Unlinked Device")))
                         .flatMap(deviceId -> {
-                            SensorReadingDomain reading = new SensorReadingDomain(deviceId, mq4, mq7, mq135);
+                            SensorReadingDomain reading = new SensorReadingDomain(deviceId, readingId, mq4, mq7, mq135);
 
                             if (reading.getAirQualityState() == SensorReadingDomain.AirQualityState.DANGER) {
                                 log.warn("¡ALERTA! Calidad del aire peligrosa detectada en dispositivo {}", macAddress);
                             }
 
                             return sensorReadingRepositoryPort.save(reading)
+                                    .switchIfEmpty(Mono.error(
+                                            new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate reading")))
                                     .flatMap(savedReading -> generateAndSaveDiagnostic(deviceId, savedReading)
                                             .thenReturn(savedReading));
                         }));

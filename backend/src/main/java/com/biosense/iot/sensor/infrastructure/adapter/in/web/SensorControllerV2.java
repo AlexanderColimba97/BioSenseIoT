@@ -28,6 +28,7 @@ public class SensorControllerV2 {
 
         return ingestSensorReadingUseCase.execute(
                 request.getMacAddress(),
+                request.getReadingId(),
                 apiKey,
                 request.getMq4(),
                 request.getMq7(),

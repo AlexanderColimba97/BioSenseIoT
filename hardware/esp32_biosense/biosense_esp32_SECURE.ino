@@ -9,6 +9,7 @@
 #include <Preferences.h>
 #include <math.h>
 #include <time.h>
+#include <esp_system.h>
 
 // NOTA: ArduinoJson es pesada, usaremos JSON manual en string
 // #include <ArduinoJson.h>  // COMENTADO: Usa ~300KB!
@@ -47,6 +48,8 @@ bool bleActive = false;
 String macAddress = "";
 String apiSecret = "";
 String jwtToken = "";
+uint32_t bootCounter = 0;
+uint32_t bootNonce = 0;
 
 // Buffer para deduplicación de lecturas
 struct SensorReading {
@@ -89,7 +92,7 @@ RiskLevel currentRiskLevel = SAFE;
  * Genera un ID único para cada lectura usando timestamp y hash
  */
 String generateReadingId() {
-  String id = macAddress + "-" + String(millis());
+  String id = macAddress + "-" + String(bootCounter) + "-" + String(bootNonce, HEX) + "-" + String(millis());
   return id;
 }
 
@@ -557,6 +560,14 @@ void setup() {
   
   macAddress = WiFi.macAddress();
   Serial.println("\n📍 MAC Address del dispositivo: " + macAddress);
+
+  preferences.begin("biosense", false);
+  bootCounter = preferences.getUInt("boot_count", 0) + 1;
+  preferences.putUInt("boot_count", bootCounter);
+  preferences.end();
+  bootNonce = esp_random();
+  Serial.println("🔐 Boot counter: " + String(bootCounter));
+  Serial.println("🔐 Boot nonce: 0x" + String(bootNonce, HEX));
   
   Serial.println("\n🔐 Cargando credenciales del almacenamiento NVS encriptado...");
   preferences.begin("biosense", true);

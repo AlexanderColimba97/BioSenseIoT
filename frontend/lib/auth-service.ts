@@ -182,9 +182,12 @@ export class AuthService {
         console.error('[Auth] El servidor no devolvió accessToken');
         throw new Error('Respuesta inválida del servidor');
       }
+      if (!data.refreshToken) {
+        console.warn('[Auth] El servidor no devolvió refreshToken; se limpiará cualquier valor previo');
+      }
       
       console.log('[Auth] Token refrescado exitosamente');
-      this.storeTokens(data.accessToken, data.refreshToken || refreshToken || undefined);
+      this.storeTokens(data.accessToken, data.refreshToken);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error desconocido';
       console.error('[Auth] Error refrescando token:', msg);
@@ -212,6 +215,11 @@ export class AuthService {
     if (typeof window === 'undefined') return;
 
     try {
+      this.removeStoredValue(STORAGE_KEYS.ACCESS_TOKEN);
+      this.removeStoredValue(STORAGE_KEYS.REFRESH_TOKEN);
+      this.removeStoredValue(STORAGE_KEYS.TOKEN_EXPIRY);
+      this.removeStoredValue('TOKEN_STORED_AT');
+
       this.writeStoredValue(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
       if (refreshToken) {
         this.writeStoredValue(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);

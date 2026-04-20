@@ -33,7 +33,8 @@ public class R2dbcSensorRepositoryAdapter implements DeviceRepositoryPort, Senso
 
     @Override
     public Mono<Void> storeApiSecretByMacAddress(String macAddress, String apiSecret) {
-        return databaseClient.sql("UPDATE devices SET api_secret = :apiSecret WHERE mac_address = :mac AND api_secret IS NULL")
+        return databaseClient
+                .sql("UPDATE devices SET api_secret = :apiSecret WHERE mac_address = :mac AND api_secret IS NULL")
                 .bind("mac", macAddress.toUpperCase())
                 .bind("apiSecret", apiSecret)
                 .then();
@@ -50,9 +51,11 @@ public class R2dbcSensorRepositoryAdapter implements DeviceRepositoryPort, Senso
     @Override
     public Mono<SensorReadingDomain> save(SensorReadingDomain reading) {
         return databaseClient.sql(
-                "INSERT INTO sensor_readings (device_id, mq4_value, mq7_value, mq135_value, timestamp) " +
-                        "VALUES (:did, :mq4, :mq7, :mq135, NOW()) RETURNING id")
+                "INSERT INTO sensor_readings (device_id, reading_id, mq4_value, mq7_value, mq135_value, timestamp) " +
+                        "VALUES (:did, :readingId, :mq4, :mq7, :mq135, NOW()) " +
+                        "ON CONFLICT (device_id, reading_id) DO NOTHING RETURNING id")
                 .bind("did", reading.getDeviceId())
+                .bind("readingId", reading.getReadingId())
                 .bind("mq4", reading.getMq4())
                 .bind("mq7", reading.getMq7())
                 .bind("mq135", reading.getMq135())
@@ -75,6 +78,7 @@ public class R2dbcSensorRepositoryAdapter implements DeviceRepositoryPort, Senso
                 .map(row -> {
                     SensorReadingDomain reading = new SensorReadingDomain(
                             row.get("device_id", Integer.class),
+                            null,
                             row.get("mq4_value", Double.class),
                             row.get("mq7_value", Double.class),
                             row.get("mq135_value", Double.class));
