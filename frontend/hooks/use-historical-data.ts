@@ -4,8 +4,6 @@ import useSWR from 'swr'
 import { AuthService } from '@/lib/auth-service'
 import { getUserDevices, getDeviceReadings, SensorReading } from '@/lib/device-service'
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://biosenseiot-production-e061.up.railway.app').replace(/\/+$/, '')
-
 export interface ChartPoint {
   label: string
   CO: number
@@ -69,8 +67,7 @@ function computeStats(readings: SensorReading[]): ReadingStats {
 }
 
 async function fetchHistoricalData(): Promise<{ chart: ChartPoint[]; stats: ReadingStats; deviceId: number | null }> {
-  const token = AuthService.getToken()
-  if (!token) return { chart: [], stats: { avgCO: 0, maxCO: 0, avgCH4: 0, maxCH4: 0, avgCOVs: 0, alertCount: 0 }, deviceId: null }
+  await AuthService.getValidToken()
 
   const devices = await getUserDevices()
   if (!devices.length) return { chart: [], stats: { avgCO: 0, maxCO: 0, avgCH4: 0, maxCH4: 0, avgCOVs: 0, alertCount: 0 }, deviceId: null }

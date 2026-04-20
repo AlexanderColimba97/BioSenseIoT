@@ -43,12 +43,14 @@ public class SecurityConfig {
                     corsConfig.setAllowedOrigins(allowedOrigins);
                     corsConfig.setMaxAge(3600L);
                     corsConfig.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-                    corsConfig.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "x-requested-with", "Cache-Control", "X-BioSense-Key"));
+                    corsConfig.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "x-requested-with",
+                            "Cache-Control", "X-BioSense-Key"));
                     corsConfig.setAllowCredentials(true);
                     corsConfig.setExposedHeaders(Arrays.asList("Authorization"));
                     return corsConfig;
                 }))
                 .authorizeExchange(exchanges -> exchanges
+                        .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .pathMatchers("/api/v2/auth/**").permitAll()
                         .pathMatchers(HttpMethod.POST, "/api/v2/sensors/reading").authenticated()
                         .pathMatchers("/api/v2/devices/**").authenticated()

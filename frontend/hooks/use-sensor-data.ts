@@ -4,8 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import { DiagnosticResponse } from '@/lib/types'
 import { AuthService } from '@/lib/auth-service'
-
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://biosenseiot-production-e061.up.railway.app').replace(/\/+$/, '')
+import { buildApiV2Url } from '@/lib/api-config'
 
 // Datos estáticos de respaldo específicos para tus sensores MQ
 const DEFAULT_DIAGNOSTIC: DiagnosticResponse = {
@@ -19,11 +18,10 @@ const DEFAULT_DIAGNOSTIC: DiagnosticResponse = {
 };
 
 const fetcher = async (url: string) => {
-  const token = AuthService.getToken();
-  if (!token) return null;
+  const token = await AuthService.getValidToken();
 
   try {
-    const res = await fetch(`${API_URL}${url}`, {
+    const res = await fetch(buildApiV2Url(url.replace(/^\/api\/v2/, '')), {
       headers: {
         'Authorization': `Bearer ${token}`
       }

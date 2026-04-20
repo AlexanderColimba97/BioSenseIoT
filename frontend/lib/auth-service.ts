@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { AuthResponse } from './types';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
+import { API_V2_URL } from './api-config';
 
 // Inicializar de forma segura solo en el cliente
 if (typeof window !== 'undefined') {
@@ -14,9 +15,6 @@ if (typeof window !== 'undefined') {
 }
 
 // URL de producción configurable
-const BASE_API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://biosenseiot-production-e061.up.railway.app').replace(/\/+$/, '');
-const API_URL = `${BASE_API_URL}/api/v2`;
-
 // Almacenamiento de tokens
 const STORAGE_KEYS = {
   ACCESS_TOKEN: 'auth_token',
@@ -137,7 +135,7 @@ export class AuthService {
 
     try {
       console.log('[Auth] Intentando refrescar token...');
-      const response = await fetch(`${API_URL}/auth/refresh`, {
+      const response = await fetch(`${API_V2_URL}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -178,7 +176,7 @@ export class AuthService {
    */
   static async refreshSession(): Promise<string> {
     await this.refreshToken();
-    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    const token = this.readStoredValue(STORAGE_KEYS.ACCESS_TOKEN);
     if (!token) {
       throw new Error('No se pudo obtener nuevo token');
     }
@@ -244,7 +242,7 @@ export class AuthService {
 
   private static async sendTokenToBackend(idToken: string): Promise<AuthResponse> {
     try {
-      const response = await fetch(`${API_URL}/auth/google`, {
+      const response = await fetch(`${API_V2_URL}/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken }),
@@ -265,7 +263,7 @@ export class AuthService {
 
   static async login(email: string, password: string): Promise<AuthResponse> {
     try {
-      const response = await fetch(`${API_URL}/auth/login`, {
+      const response = await fetch(`${API_V2_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -286,7 +284,7 @@ export class AuthService {
 
   static async register(email: string, password: string, fullName: string): Promise<AuthResponse> {
     try {
-      const response = await fetch(`${API_URL}/auth/register`, {
+      const response = await fetch(`${API_V2_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, fullName }),

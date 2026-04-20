@@ -1,6 +1,5 @@
 import { AuthService } from './auth-service';
-
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://biosenseiot-production-e061.up.railway.app').replace(/\/+$/, '')
+import { API_V2_URL } from './api-config';
 
 export interface Device {
   id: number;
@@ -81,7 +80,7 @@ export async function linkDevice(macAddress: string, deviceName: string): Promis
 
     console.log('[Device] Vinculando dispositivo:', { macAddress, deviceName });
 
-    const response = await fetchWithAuthRetry(`${API_URL}/api/v2/devices/link`, {
+    const response = await fetchWithAuthRetry(`${API_V2_URL}/devices/link`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -131,7 +130,7 @@ export async function linkDevice(macAddress: string, deviceName: string): Promis
 
 export async function getUserDevices(): Promise<Device[]> {
   try {
-    const response = await fetchWithAuthRetry(`${API_URL}/api/v2/devices/my-devices`, {});
+    const response = await fetchWithAuthRetry(`${API_V2_URL}/devices/my-devices`, {});
 
     if (!response.ok) {
       if (response.status === 401) throw new Error('Sesión expirada. Por favor inicia sesión nuevamente.');
@@ -148,7 +147,7 @@ export async function getUserDevices(): Promise<Device[]> {
 export async function getDeviceReadings(deviceId: number, limit = 100): Promise<SensorReading[]> {
   try {
     const response = await fetchWithAuthRetry(
-      `${API_URL}/api/v2/devices/${deviceId}/readings?limit=${limit}`,
+      `${API_V2_URL}/devices/${deviceId}/readings?limit=${limit}`,
       {}
     );
 
@@ -162,7 +161,7 @@ export async function getDeviceReadings(deviceId: number, limit = 100): Promise<
 
 export async function unlinkDevice(deviceId: number): Promise<void> {
   try {
-    const response = await fetchWithAuthRetry(`${API_URL}/api/v2/devices/${deviceId}`, {
+    const response = await fetchWithAuthRetry(`${API_V2_URL}/devices/${deviceId}`, {
       method: 'DELETE',
       headers: {}
     });

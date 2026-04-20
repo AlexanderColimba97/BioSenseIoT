@@ -1,6 +1,5 @@
 import { DiagnosticResponse, Alert, HistoricalDataPoint } from './types';
-
-const API_BASE_URL = `${(process.env.NEXT_PUBLIC_API_URL || 'https://biosenseiot-production-e061.up.railway.app').replace(/\/+$/, '')}/api`;
+import { API_V2_URL } from './api-config';
 
 export function generateAlerts(): Alert[] {
   return [
@@ -50,7 +49,7 @@ export function getRecommendations(data: any): any[] {
 export class SensorService {
   static async getLatestDiagnostic(token: string): Promise<DiagnosticResponse> {
     try {
-      const response = await fetch(`${API_BASE_URL}/diagnostics/latest`, {
+      const response = await fetch(`${API_V2_URL}/diagnostics/latest`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
