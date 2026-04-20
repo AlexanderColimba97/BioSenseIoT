@@ -24,7 +24,7 @@ public class R2dbcDeviceRepositoryAdapter implements DeviceRepositoryPort {
         public Mono<DeviceDomain> linkDeviceToUser(Integer userId, String macAddress, String deviceName) {
                 String newSecret = generateApiSecret();
                 return databaseClient.sql(
-                                "UPDATE devices SET user_id = :userId, name = :deviceName, api_secret = :apiSecret, last_seen = NOW() " +
+                                "UPDATE devices SET user_id = :userId, name = :deviceName, api_secret = :apiSecret " +
                                                 "WHERE mac_address = :macAddress " +
                                                 "RETURNING id, user_id, mac_address, name, api_secret")
                                 .bind("userId", userId)
@@ -41,8 +41,10 @@ public class R2dbcDeviceRepositoryAdapter implements DeviceRepositoryPort {
                                 .first()
                                 .switchIfEmpty(
                                                 databaseClient.sql(
-                                                                "INSERT INTO devices (mac_address, name, user_id, api_secret, last_seen) " +
-                                                                                "VALUES (:macAddress, :deviceName, :userId, :apiSecret, NOW()) " +
+                                                                "INSERT INTO devices (mac_address, name, user_id, api_secret) "
+                                                                                +
+                                                                                "VALUES (:macAddress, :deviceName, :userId, :apiSecret) "
+                                                                                +
                                                                                 "RETURNING id, user_id, mac_address, name, api_secret")
                                                                 .bind("userId", userId)
                                                                 .bind("macAddress", macAddress.toUpperCase())

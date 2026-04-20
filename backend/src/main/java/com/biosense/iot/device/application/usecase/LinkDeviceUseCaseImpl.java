@@ -35,7 +35,7 @@ public class LinkDeviceUseCaseImpl implements LinkDeviceUseCase {
                                 .doOnSuccess(device -> log.info("Device linked successfully: {} to user {}",
                                                 normalizedMac,
                                                 userEmail))
-                                .doOnError(e -> log.error("Error linking device: {}", e.getMessage()));
+                                .doOnError(e -> log.error("Error linking device: {}", e.getMessage(), e));
         }
 
         private String normalizeMacAddress(String macAddress) {

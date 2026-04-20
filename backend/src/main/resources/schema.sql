@@ -49,6 +49,16 @@ CREATE TABLE IF NOT EXISTS devices (
     last_seen TIMESTAMP WITH TIME ZONE
 );
 
+-- Backward compatibility for legacy devices table variants.
+ALTER TABLE IF EXISTS devices
+ADD COLUMN IF NOT EXISTS name VARCHAR(100);
+
+ALTER TABLE IF EXISTS devices
+ADD COLUMN IF NOT EXISTS api_secret VARCHAR(255);
+
+ALTER TABLE IF EXISTS devices
+ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP WITH TIME ZONE;
+
 -- Add api_secret column to existing databases (idempotent)
 -- ALTERNATIVA: Si el error persiste, comenta la siguiente línea y ejecuta manualmente en pgAdmin
 -- Para evitar problemas de parsing, se usa una sintaxis más simple:
