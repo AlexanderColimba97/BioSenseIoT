@@ -65,6 +65,14 @@ CREATE TABLE IF NOT EXISTS sensor_readings (
     UNIQUE(device_id, reading_id)
 );
 
+-- Backward compatibility: existing deployments may already have sensor_readings
+-- without the new deduplication column/constraint.
+ALTER TABLE IF EXISTS sensor_readings
+ADD COLUMN IF NOT EXISTS reading_id VARCHAR(255);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sensor_readings_device_reading_id
+ON sensor_readings(device_id, reading_id);
+
 -- AI Diagnostics results
 CREATE TABLE IF NOT EXISTS ai_diagnostics (
     id SERIAL PRIMARY KEY,
