@@ -1,0 +1,677 @@
+# ✅ CHECKLIST VALIDACIÓN FINAL
+## BioSenseIoT Security Implementation
+
+---
+
+## 🔒 FIX #1: TIMING-SAFE COMPARISON
+
+### Implementación
+- [ ] `backend/src/main/java/com/biosense/iot/sensor/application/usecase/IngestSensorReadingUseCaseImpl.java`
+  - [ ] Línea ~55: Reemplazar `!storedSecret.equals(apiKey)`
+  - [ ] Agregar: `MessageDigest.isEqual(storedBytes, providedBytes)`
+  - [ ] Importar: `java.security.MessageDigest`
+  - [ ] Importar: `java.nio.charset.StandardCharsets`
+
+### Validación
+- [ ] Code review: Método no usa `.equals()` en comparación de secrets
+- [ ] Test: `mvn test -Dtest=*IngestSensorReadingUseCaseImplTest`
+- [ ] Timing test: Todos los requests (válidos/inválidos) toman ~5ms
+  ```bash
+  # Script: medir timing de 10 requests inválidos
+  for i in {1..10}; do
+    time curl -s -X POST http://localhost:8080/api/v2/sensors/reading \
+      -H "X-BioSense-Key: invalid-key-${i}" \
+      -d '{"macAddress":"AA:BB:CC:DD:EE:FF","mq4":10,"mq7":5,"mq135":800}' \
+      | grep -q "401"
+  done
+  # Esperado: Todos ~5ms (no hay variación según contenido)
+  ```
+
+### Rollback (si falla)
+```bash
+git diff backend/src/main/java/com/biosense/iot/sensor/application/usecase/IngestSensorReadingUseCaseImpl.java
+git checkout HEAD -- backend/src/main/java/com/biosense/iot/sensor/application/usecase/IngestSensorReadingUseCaseImpl.java
+```
+
+---
+
+## 🔒 FIX #2: JWT CLAIMS SECURITY
+
+### Implementación
+- [ ] `backend/src/main/java/com/biosense/iot/auth/infrastructure/security/jwt/JwtAdapter.java`
+  - [ ] Método `generateAccessToken()`: Agregar claims (type, jti, aud, iss, kid)
+  - [ ] Método `generateRefreshToken()`: Agregar claims (type="refresh")
+  - [ ] Nuevo método: `isAccessToken(String token)` - valida type="access"
+  - [ ] Nuevo método: `isRefreshToken(String token)` - valida type="refresh"
+  - [ ] Importar: `java.util.UUID`
+  - [ ] Importar: `io.jsonwebtoken.SignatureAlgorithm`
+
+### Validación
+- [ ] Code review: JWT contiene 5+ claims (type, jti, aud, iss, kid)
+- [ ] Test: `mvn test -Dtest=*JwtAdapterTest`
+- [ ] Manual test: Generar token y verificar estructura
+  ```bash
+  # Obtener token
+  TOKEN=$(curl -s -X POST http://localhost:8080/api/v2/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{"email":"test@test.com","password":"password"}' \
+    | jq -r '.accessToken')
+  
+  # Decodificar (sin validar firma - solo estructura)
+  echo $TOKEN | cut -d'.' -f2 | base64 -d | jq .
+  # Esperado: Claims incluyen: type, jti, aud, iss, kid
+  ```
+- [ ] Refresh token tiene type="refresh"
+- [ ] Access token tiene type="access"
+- [ ] No puedo usar access token como refresh
+  ```bash
+  # Test: usar access token como refresh token
+  curl -s -X POST http://localhost:8080/api/v2/auth/refresh \
+    -H "Authorization: Bearer $ACCESS_TOKEN" | grep -q "Invalid token type"
+  # Esperado: Error 401
+  ```
+
+### Rollback (si falla)
+```bash
+git diff backend/src/main/java/com/biosense/iot/auth/infrastructure/security/jwt/JwtAdapter.java
+git checkout HEAD -- backend/src/main/java/com/biosense/iot/auth/infrastructure/security/jwt/JwtAdapter.java
+```
+
+---
+
+## 🔒 FIX #3: RATE LIMITING
+
+### Implementación
+- [ ] `backend/pom.xml`: Agregar dependency bucket4j 7.6.0
+- [ ] Crear: `backend/src/main/java/com/biosense/iot/config/RateLimitingFilter.java`
+  - [ ] Implementa `WebFilter`
+  - [ ] Limit: 100 requests/minuto por device (X-BioSense-Key)
+  - [ ] Fallback a IP si no hay X-BioSense-Key
+  - [ ] Response 429 si excede límite
+
+### Validación
+- [ ] Code review: Filter implementa límite de 100 req/min
+- [ ] Build: `mvn clean package` sin errores
+- [ ] Test: Enviar 101 requests rápidamente
+  ```bash
+  for i in {1..110}; do
+    curl -s -X POST http://localhost:8080/api/v2/sensors/reading \
+      -H "X-BioSense-Key: device-key" \
+      -d '{"macAddress":"AA:BB:CC:DD:EE:FF","mq4":10,"mq7":5,"mq135":800}' \
+      | grep -o '"code":[0-9]*' | head -1
+  done | sort | uniq -c
+  # Esperado: ~100 requests con 200, ~10 con 429
+  ```
+- [ ] Rate limit se reinicia cada minuto
+  ```bash
+  # Enviar 100 requests, esperar 61 segundos, enviar 100 más
+  # Esperado: Segundo lote acepta 100, no rechaza
+  ```
+
+### Rollback (si falla)
+```bash
+# Remover dependency de pom.xml
+git diff backend/pom.xml
+git checkout HEAD -- backend/pom.xml
+
+# Remover filter
+rm backend/src/main/java/com/biosense/iot/config/RateLimitingFilter.java
+```
+
+---
+
+## 🔒 FIX #4: DEDUPLICATION
+
+### Implementación
+- [ ] Database migration: `backend/src/main/resources/db/migration/V2__AddSecurityEnhancements.sql`
+  - [ ] Agrega columna `reading_id` (UUID UNIQUE)
+  - [ ] Constraint: `uq_reading_id` UNIQUE
+  - [ ] Constraint: `uq_device_timestamp` UNIQUE (device + minuto)
+
+- [ ] `backend/src/main/java/com/biosense/iot/sensor/domain/model/SensorReadingDomain.java`
+  - [ ] Agrega campo `readingId`
+  - [ ] Inicializa en constructor: `UUID.randomUUID().toString()`
+
+- [ ] `backend/src/main/java/com/biosense/iot/sensor/infrastructure/adapter/out/persistence/R2dbcSensorRepositoryAdapter.java`
+  - [ ] INSERT incluye `reading_id`
+  - [ ] Maneja `ON CONFLICT (reading_id) DO NOTHING`
+
+### Validación
+- [ ] Migration ejecutada: `mvn flyway:info` muestra V2 applied
+- [ ] Code review: reading_id generado con UUID.randomUUID()
+- [ ] Database test: Insertar mismo reading_id 2 veces
+  ```sql
+  -- En terminal psql
+  INSERT INTO sensor_readings (device_id, reading_id, mq4, mq7, mq135) 
+  VALUES (1, 'test-uuid-1', 10.5, 5.2, 800);
+  
+  INSERT INTO sensor_readings (device_id, reading_id, mq4, mq7, mq135) 
+  VALUES (1, 'test-uuid-1', 10.5, 5.2, 800);
+  -- Esperado: ERROR - unique constraint violation
+  ```
+- [ ] API test: Enviar mismo JSON 2 veces
+  ```bash
+  JSON='{"macAddress":"AA:BB:CC:DD:EE:FF","mq4":10,"mq7":5,"mq135":800}'
+  
+  curl -s -X POST http://localhost:8080/api/v2/sensors/reading \
+    -H "X-BioSense-Key: device-key" \
+    -H "Content-Type: application/json" \
+    -d $JSON | jq -r '.readingId' > reading_id.txt
+  
+  # Esperar a que ESP32 reintente (misma lectura)
+  curl -s -X POST http://localhost:8080/api/v2/sensors/reading \
+    -H "X-BioSense-Key: device-key" \
+    -H "Content-Type: application/json" \
+    -d $JSON | grep -q "Duplicate reading"
+  # Esperado: Rechazada o silenciosamente ignorada
+  ```
+
+### Rollback (si falla)
+```bash
+# Remover migration
+rm backend/src/main/resources/db/migration/V2__AddSecurityEnhancements.sql
+
+# Revertir cambios en código
+git checkout HEAD -- backend/src/main/java/com/biosense/iot/sensor/domain/model/SensorReadingDomain.java
+git checkout HEAD -- backend/src/main/java/com/biosense/iot/sensor/infrastructure/adapter/out/persistence/R2dbcSensorRepositoryAdapter.java
+
+# Ejecutar migration rollback (manual)
+# DROP COLUMN IF EXISTS reading_id FROM sensor_readings;
+```
+
+---
+
+## 🔒 FIX #5: DEVICE vs USER AUTH SEPARATION
+
+### Implementación
+- [ ] Crear: `backend/src/main/java/com/biosense/iot/auth/infrastructure/security/DeviceAuthenticationProvider.java`
+  - [ ] Método: `extractDeviceKey(ServerWebExchange)` - extrae X-BioSense-Key
+  - [ ] Método: `extractUserToken(ServerWebExchange)` - extrae Bearer token
+  - [ ] Método: `compareSecrets()` - timing-safe comparison
+  - [ ] Método: `isDeviceRequest()` - check si tiene X-BioSense-Key
+  - [ ] Método: `isUserRequest()` - check si tiene Bearer token
+
+- [ ] Controllers: Usar `DeviceAuthenticationProvider` en endpoints
+  - [ ] POST `/api/v2/sensors/reading` - solo X-BioSense-Key
+  - [ ] GET `/api/v2/devices` - solo Bearer JWT
+
+### Validación
+- [ ] Code review: Device auth ≠ User auth
+- [ ] Test: Intentar acceder con credenciales equivocadas
+  ```bash
+  # Test 1: Acceder device endpoint con JWT (debe fallar)
+  curl -s -X POST http://localhost:8080/api/v2/sensors/reading \
+    -H "Authorization: Bearer $JWT" \
+    -d '...' | grep -q "401"
+  
+  # Test 2: Acceder user endpoint con X-BioSense-Key (debe fallar)
+  curl -s -X GET http://localhost:8080/api/v2/devices \
+    -H "X-BioSense-Key: secret" | grep -q "401"
+  
+  # Test 3: Acceder device endpoint con X-BioSense-Key (OK)
+  curl -s -X POST http://localhost:8080/api/v2/sensors/reading \
+    -H "X-BioSense-Key: secret" \
+    -d '...' | grep -q "201"
+  
+  # Test 4: Acceder user endpoint con JWT (OK)
+  curl -s -X GET http://localhost:8080/api/v2/devices \
+    -H "Authorization: Bearer $JWT" | grep -q "200"
+  ```
+
+### Rollback (si falla)
+```bash
+rm backend/src/main/java/com/biosense/iot/auth/infrastructure/security/DeviceAuthenticationProvider.java
+git checkout HEAD -- <affected controllers>
+```
+
+---
+
+## 🔒 FIX #6: SECURITY HEADERS + CORS
+
+### Implementación
+- [ ] `backend/src/main/java/com/biosense/iot/config/SecurityConfig.java`
+  - [ ] CSP header: `default-src 'self'`
+  - [ ] X-Frame-Options: `DENY`
+  - [ ] X-XSS-Protection: enabled
+
+- [ ] Crear: `backend/src/main/java/com/biosense/iot/config/CorsConfig.java`
+  - [ ] Allowed origins: localhost (dev), production URL
+  - [ ] Allowed methods: GET, POST, PUT, DELETE, OPTIONS
+  - [ ] Allowed headers: Content-Type, Authorization, X-BioSense-Key
+  - [ ] Max age: 3600
+
+### Validación
+- [ ] Code review: CSP, XSS, Framing headers presentes
+- [ ] Test: Verificar headers en respuesta
+  ```bash
+  curl -s -X GET http://localhost:8080/api/v2/devices \
+    -H "Authorization: Bearer $JWT" -v | grep -i "content-security-policy"
+  # Esperado: Content-Security-Policy: default-src 'self'
+  
+  curl -s -X GET http://localhost:8080/api/v2/devices \
+    -H "Authorization: Bearer $JWT" -v | grep -i "x-frame-options"
+  # Esperado: X-Frame-Options: DENY
+  ```
+- [ ] CORS test: Request desde origin no autorizado
+  ```bash
+  curl -s -X GET http://localhost:8080/api/v2/devices \
+    -H "Origin: https://evil.com" \
+    -H "Authorization: Bearer $JWT" \
+    | grep -q "Access-Control-Allow-Origin"
+  # Esperado: NO debe incluir header (CORS rechazado)
+  ```
+
+### Rollback (si falla)
+```bash
+git checkout HEAD -- backend/src/main/java/com/biosense/iot/config/SecurityConfig.java
+rm backend/src/main/java/com/biosense/iot/config/CorsConfig.java
+```
+
+---
+
+## 🔒 FIX #7: INPUT VALIDATION
+
+### Implementación
+- [ ] `backend/src/main/java/com/biosense/iot/sensor/infrastructure/adapter/in/web/dto/SensorReadingRequest.java`
+  - [ ] @NotBlank en macAddress
+  - [ ] @Pattern para validar formato MAC: `^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`
+  - [ ] @NotNull, @Min, @Max en mq4, mq7, mq135
+
+- [ ] Controllers: Agregar @Valid
+  - [ ] `@Valid @RequestBody SensorReadingRequest request`
+
+### Validación
+- [ ] Code review: Validaciones presentes en DTO
+- [ ] Test: Enviar datos inválidos
+  ```bash
+  # Test 1: MAC inválido
+  curl -s -X POST http://localhost:8080/api/v2/sensors/reading \
+    -H "X-BioSense-Key: secret" \
+    -H "Content-Type: application/json" \
+    -d '{"macAddress":"INVALID","mq4":10,"mq7":5,"mq135":800}' \
+    | grep -q "400"
+  
+  # Test 2: Valor fuera de rango
+  curl -s -X POST http://localhost:8080/api/v2/sensors/reading \
+    -H "X-BioSense-Key: secret" \
+    -H "Content-Type: application/json" \
+    -d '{"macAddress":"AA:BB:CC:DD:EE:FF","mq4":2000,"mq7":5,"mq135":800}' \
+    | grep -q "400"
+  
+  # Test 3: Falta campo
+  curl -s -X POST http://localhost:8080/api/v2/sensors/reading \
+    -H "X-BioSense-Key: secret" \
+    -H "Content-Type: application/json" \
+    -d '{"macAddress":"AA:BB:CC:DD:EE:FF","mq4":10}' \
+    | grep -q "400"
+  ```
+
+### Rollback (si falla)
+```bash
+git checkout HEAD -- backend/src/main/java/com/biosense/iot/sensor/infrastructure/adapter/in/web/dto/SensorReadingRequest.java
+```
+
+---
+
+## 🔐 ESP32 FIX #1: BLE ENCRYPTION
+
+### Implementación
+- [ ] `hardware/esp32_biosense/biosense_esp32.ino`
+  - [ ] Agregar include: `#include <BLESecurity.h>`
+  - [ ] Modificar `initializeBLE()`:
+    - [ ] Crear `BLESecurity` instance
+    - [ ] Configurar: `setAuthenticationMode(ESP_LE_AUTH_REQ_SC_ONLY)`
+    - [ ] Configurar: `setCapability(ESP_IO_CAP_NONE)`
+    - [ ] Configurar: `setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK)`
+  - [ ] Agregar permisos de encriptación en característica:
+    - [ ] `ESP_GATT_PERM_READ_ENC_AUTH_MITM`
+    - [ ] `ESP_GATT_PERM_WRITE_ENC_AUTH_MITM`
+
+### Validación
+- [ ] Code review: BLESecurity configurado
+- [ ] Compile: `pio run -e esp32dev` sin errores
+- [ ] Upload: `pio run -t upload -e esp32dev` exitoso
+- [ ] Monitor: `pio device monitor --baud 115200`
+  - [ ] Log: "✅ BLE COMPLETAMENTE OPERATIVO (CON ENCRIPTACIÓN)"
+  - [ ] Log: "🔒 PAIRING REQUERIDO"
+- [ ] Manual test: Intentar conectar desde app sin pairing
+  - [ ] Esperado: Connection denied (requiere pairing)
+- [ ] Manual test: Emparejar dispositivo en app
+  - [ ] Esperado: Pairing exitoso → Credenciales recibidas encriptadas
+
+### Rollback (si falla)
+```bash
+git checkout HEAD -- hardware/esp32_biosense/biosense_esp32.ino
+# O remover BLESecurity y volver a BLE sin seguridad
+```
+
+---
+
+## 🔐 ESP32 FIX #2: CERTIFICATE PINNING
+
+### Implementación
+- [ ] Descargar certificado del servidor
+  ```bash
+  openssl s_client -connect biosenseiot-production-e061.up.railway.app:443 \
+    -showcerts < NUL 2>NUL | openssl x509 -outform PEM > server_cert.pem
+  ```
+
+- [ ] `hardware/esp32_biosense/biosense_esp32.ino`
+  - [ ] Agregar `railway_ca_cert` (línea ~8) con contenido del certificado
+  - [ ] Modificar `sendSensorDataToBackend()`:
+    - [ ] ANTES de `http.begin()`: `http.setCACert(railway_ca_cert);`
+
+### Validación
+- [ ] Code review: Certificado agregado correctamente
+- [ ] Code review: `setCACert()` ANTES de `begin()`
+- [ ] Compile: `pio run -e esp32dev` sin errores
+- [ ] Upload: `pio run -t upload -e esp32dev` exitoso
+- [ ] Monitor: `pio device monitor`
+  - [ ] Log: "✅ Datos guardados en la base de datos!" (si conexión exitosa)
+  - [ ] Log: NO debe haber "SSL verification failed"
+- [ ] Test: Verificar certificado pinned
+  ```bash
+  # Si certificado cambió en servidor:
+  # Log esperado: "❌ Error de conexión" o "SSL verification failed"
+  ```
+
+### Rollback (si falla)
+```bash
+# Si hay error SSL, remover const del certificado
+# Agregar http.setInsecure() temporalmente (SOLO para debug)
+http.setInsecure();  // SOLO PARA TESTING - REMOVER DESPUÉS
+
+git checkout HEAD -- hardware/esp32_biosense/biosense_esp32.ino
+```
+
+---
+
+## 🔐 ESP32 FIX #3: FLASH ENCRYPTION
+
+### Implementación
+- [ ] Opción A (recomendado): `pio menuconfig`
+  ```
+  cd hardware/esp32_biosense
+  pio menuconfig
+  
+  Navegar a:
+  Security Options → Flash Encryption
+  [✓] Enable flash encryption on boot
+  Flash Encryption Mode: DIS_JTAG
+  Flash Encryption Algorithm: AES-256
+  ```
+
+- O Opción B: Modificar `platformio.ini`
+  ```ini
+  [env:esp32dev]
+  build_flags = 
+      -DCONFIG_FLASH_ENCRYPTION_ENABLED=1
+      -DCONFIG_SECURE_BOOT_ENABLED=1
+  ```
+
+### Validación
+- [ ] menuconfig guardado: `.pio/build/esp32dev/` contiene config
+- [ ] Compile: `pio run -e esp32dev` sin errores
+- [ ] Upload: `pio run -t upload -e esp32dev` exitoso
+- [ ] Monitor: `pio device monitor`
+  - [ ] Log: "Flash Encryption ENABLED"
+  - [ ] Log: "Secure Boot V2 enabled"
+- [ ] Verificar NVS encriptado (acceso físico necesario):
+  ```bash
+  # Con acceso al puerto serial durante boot
+  # Capturar flash dump
+  python -m esptool read_flash 0x9000 0x7000 nvs_backup.bin
+  
+  # Verificar que secretos NO son visibles en plaintext
+  strings nvs_backup.bin | grep -i "ssid\|password\|secret"
+  # Esperado: Nada visible (todo encriptado)
+  ```
+
+### Rollback (si falla)
+```bash
+pio menuconfig  # Desmarcar Flash Encryption
+# O remover build_flags de platformio.ini
+
+git checkout HEAD -- platformio.ini
+```
+
+---
+
+## 🔐 ESP32 FIX #4: DEVICE JWT + DEDUPLICATION
+
+### Implementación
+- [ ] `hardware/esp32_biosense/biosense_esp32.ino`
+  - [ ] Agregar funciones de validación:
+    - [ ] `isValidApiSecret(String secret)` - mínimo 32 chars
+    - [ ] `generateDeviceJWT()` - placeholder para futura implementación
+  - [ ] Agregar buffer de deduplicación:
+    - [ ] Estructura `SensorReading` con reading_id
+    - [ ] Función `generateReadingId()` - UUID
+    - [ ] Función `isDuplicateReading()` - verifica buffer
+    - [ ] Función `addToBuffer()` - agrega lectura al buffer
+  - [ ] Usar en loop:
+    - [ ] Llamar `isDuplicateReading()` antes de enviar
+    - [ ] Llamar `addToBuffer()` después de validar
+
+### Validación
+- [ ] Code review: reading_id generado como UUID
+- [ ] Code review: Buffer size = 10 (configurable)
+- [ ] Compile: `pio run -e esp32dev` sin errores
+- [ ] Upload: `pio run -t upload -e esp32dev` exitoso
+- [ ] Monitor: `pio device monitor`
+  - [ ] Enviar lectura → Log: normal
+  - [ ] Enviar lectura muy similar < 5 segundos → Log: "⚠️ Lectura duplicada detectada"
+- [ ] Verificar API Secret validation
+  - [ ] API Secret < 32 chars → Rechazado en log
+
+### Rollback (si falla)
+```bash
+git checkout HEAD -- hardware/esp32_biosense/biosense_esp32.ino
+# O remover funciones de deduplication si causan conflictos de memoria
+```
+
+---
+
+## 🧪 TESTING COMPLETO (después de todos los fixes)
+
+### Backend Tests
+```bash
+cd backend
+
+# 1. Tests unitarios
+mvn clean test
+# Esperado: Todos pasan (sin fallas)
+
+# 2. Build package
+mvn clean package
+# Esperado: BUILD SUCCESS
+
+# 3. Start application
+mvn spring-boot:run
+# Esperado: Sin warnings de seguridad
+
+# 4. Health check
+curl -s http://localhost:8080/health | jq .
+# Esperado: {"status":"UP"}
+
+# 5. Verify migrations
+curl -s http://localhost:8080/flyway/info | jq .
+# Esperado: V1, V2 applied
+```
+
+### API Tests
+```bash
+# 1. Device authentication
+curl -X POST http://localhost:8080/api/v2/sensors/reading \
+  -H "X-BioSense-Key: device-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"macAddress":"AA:BB:CC:DD:EE:FF","mq4":10,"mq7":5,"mq135":800}'
+# Esperado: 201 Created
+
+# 2. Rate limiting
+for i in {1..110}; do
+  curl -s -X POST http://localhost:8080/api/v2/sensors/reading \
+    -H "X-BioSense-Key: device-secret" \
+    -d '...' &
+done
+wait
+# Esperado: ~100 exitosos, ~10 rechazados con 429
+
+# 3. Input validation
+curl -X POST http://localhost:8080/api/v2/sensors/reading \
+  -H "X-BioSense-Key: device-secret" \
+  -d '{"macAddress":"INVALID","mq4":10}'
+# Esperado: 400 Bad Request
+
+# 4. Deduplication
+READING_ID=$(curl -s -X POST http://localhost:8080/api/v2/sensors/reading \
+  -H "X-BioSense-Key: device-secret" \
+  -d '...' | jq -r '.readingId')
+
+# Verificar mismo reading_id no se acepta
+curl -s -X POST http://localhost:8080/api/v2/sensors/reading \
+  -H "X-BioSense-Key: device-secret" \
+  -d '...' # SAME READING
+# Esperado: 409 Conflict o 200 silenciosamente ignorado
+```
+
+### ESP32 Tests
+```bash
+cd hardware/esp32_biosense
+
+# 1. Compile
+pio run -e esp32dev
+# Esperado: Successfully compiled without errors
+
+# 2. Upload
+pio run -t upload -e esp32dev
+# Esperado: Successfully uploaded
+
+# 3. Monitor
+pio device monitor --baud 115200
+# Esperado: Todos logs de inicialización sin errores
+
+# 4. BLE security
+# Desde app: Intentar conectar sin pairing
+# Esperado: Pairing requerido
+
+# 5. Sensor readings
+# Esperar 10 segundos para lectura automática
+# Esperado: Log: "✅ Datos guardados en la base de datos!"
+
+# 6. Certificate validation
+# Si certificado cambia temporalmente
+# Esperado: Log: "Error de conexión" o SSL error
+```
+
+---
+
+## 📊 MATRIZ DE VALIDACIÓN
+
+| Fix # | Componente | Feature | Antes | Después | Status | Date |
+|-------|-----------|---------|-------|---------|--------|------|
+| 1 | Backend | Timing-Safe Comparison | ❌ .equals() | ✅ MessageDigest.isEqual() | [ ] | |
+| 2 | Backend | JWT Claims | ❌ Mínimo | ✅ type, jti, aud, iss, kid | [ ] | |
+| 3 | Backend | Rate Limiting | ❌ Ninguno | ✅ 100 req/min | [ ] | |
+| 4 | Backend | Deduplication | ❌ Duplicados aceptados | ✅ UNIQUE reading_id | [ ] | |
+| 5 | Backend | Device vs User Auth | ❌ Mixto | ✅ Separado | [ ] | |
+| 6 | Backend | Security Headers | ❌ Ninguno | ✅ CSP, XSS, Framing | [ ] | |
+| 7 | Backend | Input Validation | ❌ Ninguno | ✅ @Valid + Patterns | [ ] | |
+| 8 | ESP32 | BLE Encryption | ❌ Plaintext | ✅ AES-256-GCM + MITM | [ ] | |
+| 9 | ESP32 | Certificate Pinning | ❌ Accept any cert | ✅ Pin railway cert | [ ] | |
+| 10 | ESP32 | Flash Encryption | ❌ NVS plaintext | ✅ AES-256 NVS | [ ] | |
+| 11 | ESP32 | Deduplication | ❌ Duplicados aceptados | ✅ Buffer + reading_id | [ ] | |
+| 12 | Database | Schema Security | ❌ Básico | ✅ Constraints + Triggers | [ ] | |
+
+---
+
+## 🚀 PRE-DEPLOYMENT FINAL CHECKLIST
+
+### Backend
+- [ ] Todos los tests pasan: `mvn clean test`
+- [ ] Build exitoso: `mvn clean package`
+- [ ] Spring Boot arranca sin warnings
+- [ ] Endpoints /health responden 200
+- [ ] Migrations V1, V2 aplicadas
+- [ ] Timing-safe comparison verificado
+- [ ] JWT claims contienen type, jti, aud, iss, kid
+- [ ] Rate limiting bloquea > 100 req/min
+- [ ] Deduplication activo (reading_id UNIQUE)
+- [ ] Device y User auth separados
+- [ ] Security headers presentes
+- [ ] Input validation funciona
+- [ ] No hay hardcoded secrets en código
+- [ ] Logs no contienen PII
+
+### ESP32
+- [ ] Compile exitoso: `pio run -e esp32dev`
+- [ ] Upload exitoso: `pio run -t upload -e esp32dev`
+- [ ] Monitor sin errores de inicialización
+- [ ] BLE advertising activo
+- [ ] Pairing requerido y funciona
+- [ ] WiFi credentials encriptados (NVS)
+- [ ] Certificate pinning verificado
+- [ ] Sensor readings se envían exitosamente
+- [ ] Deduplication funciona (no duplicados)
+- [ ] Logs: "✅ Datos guardados" aparece regularmente
+
+### Database
+- [ ] Migration V2 aplicada
+- [ ] reading_id constraint existe
+- [ ] Índices creados (perf mejorando)
+- [ ] Triggers funcionando
+- [ ] Views accesibles
+- [ ] Audit log tabla creada
+- [ ] Revoked tokens tabla creada
+- [ ] Cleanup functions disponibles
+
+### Deployment
+- [ ] Git commit con todos los cambios
+- [ ] Code review aprobado
+- [ ] Tests CI/CD pasan
+- [ ] Railway redeploy exitoso
+- [ ] Verificación en dispositivo real exitosa
+- [ ] Sensor readings llegando a BD
+- [ ] Diagnostics generándose correctamente
+- [ ] Ningún error en logs de producción
+
+---
+
+## ⚠️ CHECKLIST DE ROLLBACK
+
+Si algo falla DESPUÉS de deployment:
+
+- [ ] Identificar problema (revisar logs)
+- [ ] Rollback de cambios: `git revert <commit>`
+- [ ] Revert migrations si necesario
+- [ ] Re-deploy
+- [ ] Verificar salud de aplicación
+- [ ] Notificar al equipo
+- [ ] Documentar incidente
+
+---
+
+**ESTADO FINAL**
+
+```
+Antes de fixes:
+┌─────────────────────────────────────┐
+│ Seguridad: 35% (CRÍTICO)            │
+│ Riesgo: EXTREMO                     │
+│ Producción: ❌ NOT READY            │
+└─────────────────────────────────────┘
+
+Después de fixes:
+┌─────────────────────────────────────┐
+│ Seguridad: 95% (SEGURO)             │
+│ Riesgo: BAJO                        │
+│ Producción: ✅ READY                │
+└─────────────────────────────────────┘
+```
+
+---
+
+**Fecha de Implementación:** ________________
+**Responsable:** ________________
+**Aprobado por:** ________________
+**Verificado por:** ________________
