@@ -149,6 +149,19 @@ export class AuthService {
   }
 
   /**
+   * Fuerza un refresh de sesión y retorna el nuevo access token.
+   * Útil cuando el backend responde 401 pero el token local aún parece válido.
+   */
+  static async refreshSession(): Promise<string> {
+    await this.refreshToken();
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    if (!token) {
+      throw new Error('No se pudo obtener nuevo token');
+    }
+    return token;
+  }
+
+  /**
    * Guarda los tokens con su tiempo de expiración
    */
   private static storeTokens(accessToken: string, refreshToken?: string): void {

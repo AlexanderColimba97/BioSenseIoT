@@ -45,22 +45,46 @@ async function retryFetch(
   throw lastError || new Error('Network request failed');
 }
 
+async function fetchWithAuthRetry(url: string, options: RequestInit): Promise<Response> {
+  let token = await AuthService.getValidToken();
+
+  let response = await retryFetch(url, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  if (response.status !== 401) {
+    return response;
+  }
+
+  // Si el backend rechaza el token actual, forzar refresh y reintentar una vez.
+  token = await AuthService.refreshSession();
+  response = await retryFetch(url, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  return response;
+}
+
 export async function linkDevice(macAddress: string, deviceName: string): Promise<Device> {
-  // Obtener token válido (refresca si es necesario)
   try {
-    const token = await AuthService.getValidToken();
-    
     if (!macAddress || !deviceName) {
       throw new Error('MAC Address y Nombre del dispositivo son requeridos');
     }
 
     console.log('[Device] Vinculando dispositivo:', { macAddress, deviceName });
 
-    const response = await retryFetch(`${API_URL}/api/v2/devices/link`, {
+    const response = await fetchWithAuthRetry(`${API_URL}/api/v2/devices/link`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ macAddress, deviceName })
     });
@@ -107,13 +131,7 @@ export async function linkDevice(macAddress: string, deviceName: string): Promis
 
 export async function getUserDevices(): Promise<Device[]> {
   try {
-    const token = await AuthService.getValidToken();
-
-    const response = await retryFetch(`${API_URL}/api/v2/devices/my-devices`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
+    const response = await fetchWithAuthRetry(`${API_URL}/api/v2/devices/my-devices`, {});
 
     if (!response.ok) {
       if (response.status === 401) throw new Error('Sesión expirada. Por favor inicia sesión nuevamente.');
@@ -129,15 +147,9 @@ export async function getUserDevices(): Promise<Device[]> {
 
 export async function getDeviceReadings(deviceId: number, limit = 100): Promise<SensorReading[]> {
   try {
-    const token = await AuthService.getValidToken();
-    
-    const response = await retryFetch(
+    const response = await fetchWithAuthRetry(
       `${API_URL}/api/v2/devices/${deviceId}/readings?limit=${limit}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      }
+      {}
     );
 
     if (!response.ok) throw new Error('Error al obtener las lecturas');
@@ -150,13 +162,9 @@ export async function getDeviceReadings(deviceId: number, limit = 100): Promise<
 
 export async function unlinkDevice(deviceId: number): Promise<void> {
   try {
-    const token = await AuthService.getValidToken();
-    
-    const response = await retryFetch(`${API_URL}/api/v2/devices/${deviceId}`, {
+    const response = await fetchWithAuthRetry(`${API_URL}/api/v2/devices/${deviceId}`, {
       method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers: {}
     });
 
     if (!response.ok) throw new Error('Error al desvincular el dispositivo');
