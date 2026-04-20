@@ -43,36 +43,33 @@ public class IngestSensorReadingUseCaseImpl implements IngestSensorReadingUseCas
 
     private Mono<Void> validateOrRegisterApiKey(String macAddress, String apiKey) {
         if (apiKey == null || apiKey.isBlank()) {
-            return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing X-BioSense-Key header"));
+            return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization header"));
         }
-        // Only validate for linked devices (ones that have a user_id, meaning they're already in our DB)
+
         return deviceRepositoryPort.getApiSecretByMacAddress(macAddress)
                 .flatMap(storedSecret -> {
                     if (storedSecret == null) {
-                        // Device exists but api_secret not yet set: store on first use
                         return deviceRepositoryPort.storeApiSecretByMacAddress(macAddress, apiKey);
                     }
                     if (!storedSecret.equals(apiKey)) {
-                        return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid X-BioSense-Key"));
+                        return Mono
+                                .error(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authorization"));
                     }
                     return Mono.<Void>empty();
                 })
-                .switchIfEmpty(Mono.defer(() ->
-                        // Device not yet in DB: provisioning not done, store the key when device row appears
-                        deviceRepositoryPort.storeApiSecretByMacAddress(macAddress, apiKey)
-                                .onErrorResume(e -> {
-                                    // Device row may not exist yet; allow the request to proceed
-                                    // and fail later at getLinkedDeviceId if not linked
-                                    log.debug("Could not store api_secret for {}: {}", macAddress, e.getMessage());
-                                    return Mono.empty();
-                                })));
+                .switchIfEmpty(Mono.defer(() -> deviceRepositoryPort.storeApiSecretByMacAddress(macAddress, apiKey)
+                        .onErrorResume(e -> {
+                            log.debug("Could not store api_secret for {}: {}", macAddress, e.getMessage());
+                            return Mono.empty();
+                        })));
     }
 
     private Mono<Void> generateAndSaveDiagnostic(Integer deviceId, SensorReadingDomain reading) {
         return deviceRepositoryPort.getUserIdByDeviceId(deviceId)
                 .flatMap(userId -> {
                     DiagnosticInfo info = buildDiagnosticInfo(reading);
-                    return diagnosticRepositoryPort.save(userId, reading.getId(), info.severity, info.text, info.recommendation);
+                    return diagnosticRepositoryPort.save(userId, reading.getId(), info.severity, info.text,
+                            info.recommendation);
                 })
                 .onErrorResume(e -> {
                     log.error("Error saving diagnostic for device {}: {}", deviceId, e.getMessage());
@@ -92,15 +89,13 @@ public class IngestSensorReadingUseCaseImpl implements IngestSensorReadingUseCas
                         "CRITICAL",
                         "Niveles críticos detectados. CO: " + String.format("%.1f", mq7) +
                                 " ppm, Aire: " + String.format("%.1f", mq135) + " ppm. Evacúe el área inmediatamente.",
-                        "Salga del área y llame a servicios de emergencia. No encienda aparatos eléctricos."
-                );
+                        "Salga del área y llame a servicios de emergencia. No encienda aparatos eléctricos.");
             }
             return new DiagnosticInfo(
                     "HIGH",
                     "Calidad del aire peligrosa. CO: " + String.format("%.1f", mq7) +
                             " ppm, Aire: " + String.format("%.1f", mq135) + " ppm.",
-                    "Abra ventanas y puertas inmediatamente. Apague fuentes de combustión cercanas."
-            );
+                    "Abra ventanas y puertas inmediatamente. Apague fuentes de combustión cercanas.");
         }
 
         if (state == SensorReadingDomain.AirQualityState.WARNING) {
@@ -111,17 +106,16 @@ public class IngestSensorReadingUseCaseImpl implements IngestSensorReadingUseCas
                     "MEDIUM",
                     gasInfo + "Niveles moderados de gases. CO: " + String.format("%.1f", mq7) +
                             " ppm, Aire: " + String.format("%.1f", mq135) + " ppm.",
-                    "Mejore la ventilación. Verifique fuentes de gas si el metano es elevado."
-            );
+                    "Mejore la ventilación. Verifique fuentes de gas si el metano es elevado.");
         }
 
         return new DiagnosticInfo(
                 "LOW",
                 "Calidad del aire aceptable. CO: " + String.format("%.1f", mq7) +
                         " ppm, Aire: " + String.format("%.1f", mq135) + " ppm.",
-                "Continúe con hábitos de ventilación regulares. Sensores calibrados correctamente."
-        );
+                "Continúe con hábitos de ventilación regulares. Sensores calibrados correctamente.");
     }
 
-    private record DiagnosticInfo(String severity, String text, String recommendation) {}
+    private record DiagnosticInfo(String severity, String text, String recommendation) {
+    }
 }

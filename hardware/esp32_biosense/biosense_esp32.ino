@@ -459,10 +459,10 @@ void sendSensorDataToBackend(float ppm_mq4, float ppm_mq7, float ppm_mq135) {
   
   HTTPClient http;
   setupSecureClient(http);
-  
+
   http.begin("https://biosenseiot-production-e061.up.railway.app/api/v2/sensors/reading");
   http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-BioSense-Key", apiSecret);
+  http.addHeader("Authorization", "Bearer " + apiSecret);
   
   String jsonPayload = "{";
   jsonPayload += "\"macAddress\":\"" + macAddress + "\",";

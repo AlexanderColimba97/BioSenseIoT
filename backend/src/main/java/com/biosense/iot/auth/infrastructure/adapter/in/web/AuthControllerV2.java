@@ -1,4 +1,6 @@
 
+package com.biosense.iot.auth.infrastructure.adapter.in.web;
+
 import java.util.Map;
 
 import org.slf4j.Logger;

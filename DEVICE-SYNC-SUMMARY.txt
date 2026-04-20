@@ -1,0 +1,424 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                  🎯 DEVICE SYNCHRONIZATION - COMPLETE FIX                    ║
+║                                                                               ║
+║         End-to-end orchestration using System Architecture Guardian           ║
+║         + 4 specialist skills (Frontend, Backend, Database, ESP32)           ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 EXECUTIVE SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+OBJECTIVE: Fix the device sync button so users can associate an ESP32 to their 
+           account and start receiving sensor data.
+
+STATUS: ✅ ANALYSIS COMPLETE
+        ✅ 6 CRITICAL ISSUES IDENTIFIED
+        ✅ FIXES DOCUMENTED
+        ✅ READY FOR IMPLEMENTATION
+
+ISSUES FOUND:
+  1. Device registration race condition (CRITICAL)
+  2. API Secret not exposed in response (HIGH)
+  3. Sensor endpoint too permissive (CRITICAL)
+  4. Device lookup uses only MAC address (HIGH)
+  5. Missing device pre-registration (MEDIUM)
+  6. No reading deduplication constraint (MEDIUM)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+🏗️ SYSTEM ARCHITECTURE GUARDIAN - PRIMARY AUTHORITY
+═══════════════════════════════════════════════════════════════════════════════
+
+THREE SACRED RULES (Non-Negotiable):
+
+Rule 1: AUTHENTICATE CORRECTLY
+  ├─ User login → User JWT
+  ├─ Device registration → User JWT required ✅
+  ├─ Sensor ingestion → X-BioSense-Key (device auth) ⚠️ NEEDS FIX
+  ├─ No API keys in code ✅
+  └─ All tokens validated server-side ✅
+
+Rule 2: TRUST ONLY THE SERVER
+  ├─ MAC stored in DB during registration ✅
+  ├─ MAC verified on each sensor read ⚠️ NEEDS FIX
+  ├─ API Secret generated server-side ✅
+  ├─ Device ownership enforced (user_id) ⚠️ NEEDS FIX
+  └─ No client-side device ID manipulation ✅
+
+Rule 3: KEEP LAYERS CLEAN
+  ├─ Frontend: Components separated from API ✅
+  ├─ Backend: Controller → Service → Repository ✅
+  ├─ Database: Foreign keys + constraints ✅
+  └─ ESP32: BLE provisioning separate from sensor loop ✅
+
+
+═══════════════════════════════════════════════════════════════════════════════
+🎨 FRONTEND UI SPECIALIST - ROLE & FIXES
+═══════════════════════════════════════════════════════════════════════════════
+
+COMPONENT: SyncDeviceModal.tsx
+
+RESPONSIBILITIES:
+  ✅ BLE device scanning
+  ✅ Secure token handling (memory-only)
+  ✅ WiFi credential input
+  ⚠️ NEEDS FIX: Retrieve apiSecret from backend
+  ✅ Error handling with user feedback
+
+FIXES REQUIRED:
+  1. After linkDevice() call, expect response with apiSecret
+  2. Send [SSID, PASSWORD, apiSecret] to ESP32 via BLE
+  3. Handle error responses: 401, 409, 500
+  4. Implement retry logic
+
+FILE TO UPDATE:
+  → frontend/components/SyncDeviceModal.tsx
+  → frontend/lib/device-service.ts
+
+
+═══════════════════════════════════════════════════════════════════════════════
+🔧 BACKEND REACTIVE SPECIALIST - ROLE & FIXES
+═══════════════════════════════════════════════════════════════════════════════
+
+COMPONENTS:
+
+1. Device Registration Endpoint (/api/v2/devices/link)
+   FIXES:
+     ✅ Authenticate user via JWT (already done)
+     ⚠️ ADD: Return apiSecret in response
+     ⚠️ ADD: Create new DTO with apiSecret field
+
+2. Sensor Ingestion Endpoint (/api/v2/sensors/reading)
+   FIXES:
+     ⚠️ CHANGE: From permitAll() → Require X-BioSense-Key header
+     ⚠️ ADD: Validate device is linked (user_id ≠ NULL)
+     ⚠️ ADD: Compare API Secret with stored value
+     ✅ Already validates X-BioSense-Key header (partially)
+
+3. Error Handling
+   FIXES:
+     ⚠️ ADD: 409 (Device not linked)
+     ⚠️ ADD: 401 (API Secret invalid)
+     ⚠️ ADD: Proper error messages
+
+FILES TO UPDATE:
+  → backend/src/main/java/.../device/.../DeviceControllerV2.java
+  → backend/src/main/java/.../device/.../LinkDeviceUseCaseImpl.java
+  → backend/src/main/java/.../sensor/.../SensorControllerV2.java
+  → backend/src/main/java/.../sensor/.../IngestSensorReadingUseCaseImpl.java
+  → backend/src/main/java/.../config/SecurityConfig.java
+
+
+═══════════════════════════════════════════════════════════════════════════════
+🗄️ DATABASE ARCHITECT - ROLE & FIXES
+═══════════════════════════════════════════════════════════════════════════════
+
+SCHEMA:
+
+users (1)
+  └─ (1:N) devices
+      ├─ user_id (FK → users.id, ON DELETE CASCADE)
+      ├─ mac_address (UNIQUE, NOT NULL)
+      └─ api_secret (stored server-side)
+
+devices (1)
+  └─ (1:N) sensor_readings
+      ├─ device_id (FK → devices.id)
+      ├─ reading_id (VARCHAR) ← UNIQUE PER DEVICE
+      └─ timestamp
+
+FIXES REQUIRED:
+  ⚠️ ADD: UNIQUE (device_id, reading_id) constraint
+  ⚠️ ADD: Indexes for performance
+  ⚠️ ADD: Index on (device_id, timestamp) for time-series
+
+SQL TO RUN:
+  ALTER TABLE sensor_readings
+  ADD CONSTRAINT unique_reading_per_device UNIQUE (device_id, reading_id);
+
+  CREATE INDEX idx_readings_device_timestamp 
+    ON sensor_readings(device_id, timestamp DESC);
+
+  CREATE INDEX idx_devices_user_id_mac 
+    ON devices(user_id, mac_address);
+
+FILES TO UPDATE:
+  → backend/src/main/resources/schema.sql
+
+
+═══════════════════════════════════════════════════════════════════════════════
+📡 ESP32 IOT SPECIALIST - ROLE & FIXES
+═══════════════════════════════════════════════════════════════════════════════
+
+DEVICE LIFECYCLE:
+
+UNPROVISIONED (no WiFi saved)
+  ↓
+PROVISIONING (BLE receives: SSID, PASSWORD, apiSecret)
+  ↓
+CONNECTING (attempts WiFi)
+  ├─ SUCCESS → CONNECTED
+  └─ FAILURE → ERROR (fallback to BLE)
+
+CONNECTED
+  ↓
+SENDING SENSOR DATA (every 10 seconds)
+  ├─ HTTP 200 → Continue ✅
+  ├─ HTTP 401 → AUTH_FAILED (device not linked)
+  ├─ HTTP 409 → AUTH_FAILED (device unlinked)
+  ├─ HTTP 5xx → Retry with exponential backoff
+  └─ Network error → Retry with exponential backoff
+
+FIXES REQUIRED:
+  ⚠️ ADD: Device state machine
+  ⚠️ ADD: Deduplication buffer for readings
+  ⚠️ ADD: Retry logic with exponential backoff
+  ⚠️ ADD: Better error messages to Serial output
+  ✅ BLE provisioning already implemented
+  ✅ Sensor ingestion already implemented
+
+BLE PROTOCOL:
+  Format: "SSID,PASSWORD,API_SECRET"
+  Example: "Home-WiFi,MyPassword123,bsk_550e8400-e29b-41d4-a716-446655440000"
+
+SENSOR INGESTION:
+  POST /api/v2/sensors/reading
+  Header: X-BioSense-Key: bsk_550e8400-e29b-41d4-a716-446655440000
+  Body: { macAddress, mq4, mq7, mq135, readingId }
+
+FILES TO UPDATE:
+  → hardware/esp32_biosense/biosense_esp32.ino
+
+
+═══════════════════════════════════════════════════════════════════════════════
+🔄 COMPLETE END-TO-END FLOW (FIXED)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. User Powers On ESP32 (No WiFi Saved)
+   └─ ESP32 enters BLE mode, advertises as BioSense-[MAC]
+
+2. User Opens App & Scans Bluetooth
+   └─ Frontend finds BioSense-[MAC]
+
+3. User Selects Device & Enters Name
+   └─ Frontend reads MAC via BLE
+
+4. User Enters WiFi Credentials
+   └─ Frontend has: MAC, Name, SSID, Password
+
+5. User Clicks "SINCRONIZAR"
+   └─ Frontend calls POST /api/v2/devices/link WITH USER JWT
+      Backend:
+        • Looks up/creates device by MAC
+        • Generates apiSecret: bsk_[UUID]
+        • Links to user_id
+        • Saves to database
+      Response: { deviceId, macAddress, apiSecret }  ← NEW
+
+6. Frontend Sends via BLE
+   └─ BLE Characteristic Write: "SSID,PASSWORD,apiSecret"
+      ESP32:
+        • Parses credentials
+        • Stores to NVS
+        • Restarts
+
+7. ESP32 Connects to WiFi
+   └─ Loads NVS, initiates WiFi connection
+      On success: STATE_CONNECTED
+      On failure: STATE_ERROR, fallback to BLE
+
+8. ESP32 Sends Sensor Data
+   └─ Every 10 seconds:
+      POST /api/v2/sensors/reading
+      Header: X-BioSense-Key: bsk_[apiSecret]
+      Body: { macAddress, mq4, mq7, mq135, readingId }
+      
+      Backend:
+        • Validates X-BioSense-Key header
+        • Looks up device by MAC
+        • ✅ CHECKS: device.user_id ≠ NULL (linked)
+        • ✅ CHECKS: API Secret matches
+        • ✅ CHECKS: reading_id unique per device
+        • Saves to database
+      Response: { status, id, airQualityState }
+
+9. Frontend Fetches Device Data
+   └─ GET /api/v2/devices/my-devices
+      Response includes readings with state
+
+✅ SYNC COMPLETE - Device linked and sending data
+
+
+═══════════════════════════════════════════════════════════════════════════════
+⚠️ CRITICAL FIXES (DO NOT SKIP)
+═══════════════════════════════════════════════════════════════════════════════
+
+FIX #1: Backend - Return apiSecret (CRITICAL)
+  Location: DeviceControllerV2.java
+  Change: Response DTO must include apiSecret
+  Why: Frontend needs to send secret to ESP32 via BLE
+  Impact: Without this, device cannot be provisioned
+
+FIX #2: Backend - Enforce Device Ownership (CRITICAL)
+  Location: SecurityConfig.java + IngestSensorReadingUseCaseImpl.java
+  Change: Validate device.user_id ≠ NULL before saving readings
+  Why: Prevents unlinked devices from sending data
+  Impact: Data integrity and device ownership enforcement
+
+FIX #3: Database - Add Deduplication (CRITICAL)
+  Location: schema.sql
+  Change: UNIQUE (device_id, reading_id)
+  Why: Prevents duplicate readings from being stored
+  Impact: Data quality and accurate sensor readings
+
+FIX #4: Backend - Require Auth for Sensor Endpoint (CRITICAL)
+  Location: SecurityConfig.java
+  Change: Sensor endpoint requires X-BioSense-Key header (not permitAll)
+  Why: Prevents unauthorized clients from sending data
+  Impact: Security and device authentication enforcement
+
+
+═══════════════════════════════════════════════════════════════════════════════
+🚀 IMPLEMENTATION ROADMAP
+═══════════════════════════════════════════════════════════════════════════════
+
+PHASE 1: Database (Day 1)
+  □ Add UNIQUE constraint on (device_id, reading_id)
+  □ Add performance indexes
+  Est. Time: 30 min
+
+PHASE 2: Backend (Day 2-3)
+  □ Update SecurityConfig.java (require auth)
+  □ Update DeviceControllerV2.java (expose apiSecret)
+  □ Update IngestSensorReadingUseCaseImpl.java (validate ownership)
+  □ Add new DeviceLinkResponseDto
+  □ Test with Postman
+  Est. Time: 3 hours
+
+PHASE 3: Frontend (Day 3-4)
+  □ Update SyncDeviceModal.tsx (get apiSecret)
+  □ Update device-service.ts (handle response)
+  □ Add error handling
+  □ Test in browser
+  Est. Time: 2 hours
+
+PHASE 4: ESP32 Firmware (Day 4-5)
+  □ Add state machine
+  □ Add deduplication buffer
+  □ Add retry logic
+  □ Add error messages
+  □ Test with WiFi and backend
+  Est. Time: 3 hours
+
+PHASE 5: Testing (Day 6)
+  □ End-to-end sync test
+  □ Verify device appears in dashboard
+  □ Verify sensor readings flow
+  □ Test error scenarios
+  Est. Time: 2 hours
+
+TOTAL ESTIMATED TIME: 10-12 hours (distributed over 6 days)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+📁 FILES CREATED
+═══════════════════════════════════════════════════════════════════════════════
+
+1. DEVICE-SYNC-ORCHESTRATION.md (14 KB)
+   → Complete orchestration guide with all skills coordinated
+
+2. DEVICE-SYNC-FIX-COMPLETE.md (33 KB)
+   → Full implementation details with code examples
+
+3. DEVICE-SYNC-QUICK-FIX.md (9 KB)
+   → Quick reference for fixing each component
+
+4. DEVICE-SYNC-SUMMARY.txt (This file)
+   → Executive summary and roadmap
+
+
+═══════════════════════════════════════════════════════════════════════════════
+✅ SUCCESS CRITERIA
+═══════════════════════════════════════════════════════════════════════════════
+
+All of these must be true:
+
+USER INTERACTION:
+  ✅ User logs into app
+  ✅ User clicks "Sync Device"
+  ✅ User scans Bluetooth and finds ESP32
+  ✅ User enters device name
+  ✅ User enters WiFi credentials
+  ✅ Sync completes in < 30 seconds
+
+BACKEND VALIDATION:
+  ✅ Device registered in database
+  ✅ Device linked to user (user_id set)
+  ✅ API Secret generated and stored
+  ✅ Device appears in user's device list
+
+ESP32 BEHAVIOR:
+  ✅ Receives credentials via BLE
+  ✅ Restarts and connects to WiFi
+  ✅ Starts sending sensor data within 10 seconds
+  ✅ Data sent with correct X-BioSense-Key header
+
+FRONTEND DISPLAY:
+  ✅ Device visible in dashboard
+  ✅ Sensor readings displayed
+  ✅ No duplicate readings shown
+  ✅ Real-time updates (10 second intervals)
+
+SECURITY:
+  ✅ No API keys in code
+  ✅ No secrets exposed in console
+  ✅ All authentication enforced
+  ✅ Device ownership verified
+  ✅ Rate limiting active
+
+
+═══════════════════════════════════════════════════════════════════════════════
+📚 RELATED DOCUMENTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+Guardian System:
+  → .instructions.md (Core rules and patterns)
+  → ARCHITECTURE-GUARDIAN-GUIDE.md (Code review workflow)
+  → validate-architecture.sh (Automated validation)
+
+Specialist Skills:
+  → BACKEND-REACTIVE-SPECIALIST-SKILL.md
+  → ESP32-IOT-SPECIALIST-SKILL.md
+  → DATABASE-ARCHITECT-SKILL.md
+  → FRONTEND-UI-SPECIALIST-SKILL.md
+
+How to Use:
+  → COMO-USAR-LAS-SKILLS.md (Spanish guide)
+
+Implementation Details:
+  → DEVICE-SYNC-ORCHESTRATION.md
+  → DEVICE-SYNC-FIX-COMPLETE.md
+  → DEVICE-SYNC-QUICK-FIX.md
+
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 NEXT STEPS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Read DEVICE-SYNC-QUICK-FIX.md (5 min overview)
+2. Read DEVICE-SYNC-ORCHESTRATION.md (detailed plan)
+3. Start Phase 1: Database changes
+4. Follow roadmap sequentially
+5. Run tests after each phase
+6. Validate with validate-architecture.sh before merge
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ ANALYSIS: COMPLETE
+✅ DOCUMENTATION: COMPLETE
+✅ FIXES: DOCUMENTED AND READY
+
+🚀 STATUS: READY FOR IMPLEMENTATION
+
+Start with DEVICE-SYNC-QUICK-FIX.md for immediate action items.

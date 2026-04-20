@@ -1,0 +1,48 @@
+package com.biosense.iot.sensor.infrastructure.adapter.in.web;
+
+import com.biosense.iot.sensor.infrastructure.adapter.in.web.dto.SensorReadingRequest;
+import com.biosense.iot.sensor.domain.port.in.IngestSensorReadingUseCase;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Mono;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/v2/sensors")
+@RequiredArgsConstructor
+public class SensorControllerV2 {
+
+    private final IngestSensorReadingUseCase ingestSensorReadingUseCase;
+
+    @PostMapping("/reading")
+    public Mono<ResponseEntity<Object>> receiveReading(
+            @RequestBody SensorReadingRequest request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+
+        String apiKey = null;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            apiKey = authHeader.substring(7);
+        }
+
+        return ingestSensorReadingUseCase.execute(
+                request.getMacAddress(),
+                apiKey,
+                request.getMq4(),
+                request.getMq7(),
+                request.getMq135())
+                .map(reading -> ResponseEntity.ok((Object) Map.of(
+                        "status", "success",
+                        "id", reading.getId(),
+                        "airQualityState", reading.getAirQualityState())))
+                .onErrorResume(e -> {
+                    if (e instanceof org.springframework.web.server.ResponseStatusException rse) {
+                        return Mono.just(ResponseEntity.status(rse.getStatusCode())
+                                .body((Object) Map.of("error", rse.getReason())));
+                    }
+                    return Mono
+                            .just(ResponseEntity.internalServerError().body((Object) Map.of("error", e.getMessage())));
+                });
+    }
+}

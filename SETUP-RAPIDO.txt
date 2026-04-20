@@ -1,0 +1,40 @@
+🎯 CONFIGURACIÓN RÁPIDA ARDUINO IDE - ESP32-32D N4
+
+Tu dispositivo: ESP32-32D N4
+Tu puerto: COM8 ✅
+
+═══════════════════════════════════════════════════════════════════════════════
+
+CONFIGURACIÓN EXACTA:
+═══════════════════════════════════════════════════════════════════════════════
+
+Tools menú:
+
+✅ Board               → ESP32 Dev Module
+✅ Port                → COM8
+✅ Upload Speed        → 921600
+✅ Flash Frequency     → 80 MHz
+✅ Flash Mode          → DIO
+✅ Flash Size          → 4MB
+
+═══════════════════════════════════════════════════════════════════════════════
+
+3 PASOS PARA FLASHEAR:
+═══════════════════════════════════════════════════════════════════════════════
+
+1️⃣  Abre archivo:
+    C:\Users\alexi\Desktop\BioSenseIoT\hardware\esp32_biosense\biosense_esp32_SECURE.ino
+
+2️⃣  Compila y sube:
+    Sketch → Upload (Ctrl+U)
+    
+    Espera: "Hard resetting via RTS pin..."
+
+3️⃣  Serial Monitor (Ctrl+Shift+M):
+    Velocidad: 115200
+    
+    Busca: "✅ BLE Iniciado"
+
+═══════════════════════════════════════════════════════════════════════════════
+
+LISTO ✅

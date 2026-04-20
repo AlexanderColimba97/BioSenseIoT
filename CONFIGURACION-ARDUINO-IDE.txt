@@ -1,0 +1,268 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                   ✅ CONFIGURACIÓN ARDUINO IDE - ESP32-32D                   ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+Tu dispositivo: ESP32-32D N4 (Espressif oficial)
+Puerto: COM8 ✅ (Ya identificado)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 CONFIGURACIÓN PASO A PASO
+═══════════════════════════════════════════════════════════════════════════════
+
+1. ABRE ARDUINO IDE
+
+2. Instala el board manager de ESP32 (si no lo tienes):
+   
+   Tools → Board Manager
+   Busca: "esp32"
+   Instala: "esp32 by Espressif Systems" (versión 2.0.0+)
+
+3. Selecciona el BOARD correcto:
+   
+   Tools → Board → esp32 → "ESP32 Dev Module"
+   
+   (Este es para el ESP32-32D N4)
+
+4. Selecciona el PUERTO:
+   
+   Tools → Port → COM8
+   
+   ✅ Tu puerto es COM8
+
+5. Configura los parámetros adicionales:
+   
+   Tools → Upload Speed → 921600 (rápido)
+   Tools → Flash Frequency → 80 MHz
+   Tools → Flash Mode → DIO
+   Tools → Flash Size → 4MB (o detecta automáticamente)
+   Tools → Partition Scheme → Default
+   Tools → Core Debug Level → Info
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 CONFIGURACIÓN COMPLETA PARA ESP32-32D N4
+═══════════════════════════════════════════════════════════════════════════════
+
+Board:                 ESP32 Dev Module           ← ESTO ES LO CORRECTO
+Port:                  COM8                       ← Tu puerto
+Upload Speed:          921600
+Flash Frequency:       80 MHz
+Flash Mode:            DIO
+Flash Size:            4MB
+Partition Scheme:      Default
+Core Debug Level:      Info
+Programmer:            (Deja por defecto)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔧 CAPTURA DE PANTALLA (VISUAL)
+═══════════════════════════════════════════════════════════════════════════════
+
+Tools menú mostrará:
+
+Tools
+├── Board: "ESP32 Dev Module"
+├── Port: "COM8"
+├── Upload Speed: "921600"
+├── Flash Frequency: "80 MHz"
+├── Flash Mode: "DIO"
+├── Flash Size: "4MB"
+├── Partition Scheme: "Default"
+├── Core Debug Level: "Info"
+└── Programmer: "AVRISP mkII"
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ VERIFICACIÓN PRE-UPLOAD
+═══════════════════════════════════════════════════════════════════════════════
+
+Antes de flashear:
+
+1. ✅ Abre: biosense_esp32_SECURE.ino
+2. ✅ Board: ESP32 Dev Module
+3. ✅ Port: COM8
+4. ✅ Serial Monitor: Cerrado (para que libere el puerto)
+5. ✅ Sketch → Verify (Ctrl+R)
+   
+   Espera: "Compilation complete."
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🚀 COMPILAR Y FLASHEAR
+═══════════════════════════════════════════════════════════════════════════════
+
+1. COMPILAR (sin subir):
+   
+   Sketch → Verify (Ctrl+R)
+   Espera: ✅ "Compilation complete."
+
+2. FLASHEAR (subir al dispositivo):
+   
+   Sketch → Upload (Ctrl+U)
+   Espera: ✅ "Hard resetting via RTS pin..."
+   Espera: ✅ "Wrote 1048576 bytes to flash"
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📡 VERIFICAR EN SERIAL MONITOR
+═══════════════════════════════════════════════════════════════════════════════
+
+Después de flashear:
+
+1. Abre Serial Monitor:
+   Tools → Serial Monitor (Ctrl+Shift+M)
+
+2. Configura:
+   Velocidad (baud rate): 115200 ← IMPORTANTE
+   Line Ending: Newline
+
+3. Busca estos mensajes:
+
+   ✅ Iniciando configuración...
+   ✅ 🔧 Iniciando BLE...
+   ✅ ✅ BLE Iniciado. UUID: 1234...
+   ✅ Esperando WiFi (SSID y Password vía BLE)...
+
+═══════════════════════════════════════════════════════════════════════════════
+
+❓ PROBLEMAS COMUNES
+═══════════════════════════════════════════════════════════════════════════════
+
+❌ "Timed out waiting for packet header"
+   
+   SOLUCIÓN:
+   1. Presiona BOOT + EN en la tarjeta
+   2. Mantén BOOT presionado hasta que suba
+   3. Intenta de nuevo
+
+❌ "Board not found"
+   
+   SOLUCIÓN:
+   1. Tools → Board Manager
+   2. Instala ESP32 by Espressif Systems
+   3. Reinicia Arduino IDE
+
+❌ "Port COM8 not found"
+   
+   SOLUCIÓN:
+   1. Desconecta USB del ESP32
+   2. Espera 3 segundos
+   3. Reconecta USB
+   4. Verifica Tools → Port → COM8
+
+❌ "Serial Monitor vacío"
+   
+   SOLUCIÓN:
+   1. Verifica velocidad: 115200 baud
+   2. Presiona EN en la tarjeta
+   3. Verifica que biosense_esp32_SECURE.ino está correcto
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ EJEMPLO DE UPLOAD EXITOSO
+═══════════════════════════════════════════════════════════════════════════════
+
+Cuando todo funciona:
+
+Sketch → Upload (Ctrl+U)
+
+Salida esperada:
+
+  Compiling sketch...
+  "C:\...\arduino-builder" -compile ...
+  Sketch uses 1048576 bytes (40%) of program storage space
+  Global variables use 65536 bytes (20%) of dynamic memory
+  
+  Uploading...
+  esptool.py v4.5.1
+  Serial port COM8
+  Connecting.....
+  Chip is ESP32 (revision 3)
+  Features: WiFi, BT, Dual Core, 240MHz, VRef calibration in efuse, Coding Scheme None
+  
+  Wrote 1048576 bytes to address 0x1000 in 23.45 seconds
+  Hard resetting via RTS pin...
+
+  ✅ LISTO!
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📝 RESUMEN RÁPIDO
+═══════════════════════════════════════════════════════════════════════════════
+
+Tu configuración:
+
+Board:  ESP32 Dev Module
+Port:   COM8
+Speed:  921600
+
+Archivo:  biosense_esp32_SECURE.ino
+
+Pasos:
+1. Abre Arduino IDE
+2. Tools → Board → ESP32 Dev Module
+3. Tools → Port → COM8
+4. Sketch → Verify
+5. Sketch → Upload
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 MODELO ESP32-32D N4 - ESPECIFICACIONES
+═══════════════════════════════════════════════════════════════════════════════
+
+Microcontrolador:    ESP32 (Dual Core Xtensa 32-bit)
+Velocidad:           240 MHz
+RAM:                 520 KB SRAM
+Flash:               4 MB (16 MB en algunas versiones)
+WiFi:                802.11 b/g/n
+Bluetooth:           BLE 4.2 + BR/EDR
+USB-UART Bridge:     CH340 (COM8 en tu PC)
+Pines GPIO:          34 (algunos ADC, algunos con pull-up)
+ADC:                 2 canales de 12-bit
+SPI:                 HSPI + VSPI
+I2C:                 2 canales
+UART:                3 canales
+Entrada tensión:     5V USB o 3.3V direct
+Corriente max:       ~500mA (USB)
+
+Tu ESP32 soporta TODO lo que necesita biosense_esp32_SECURE.ino:
+✅ WiFi
+✅ BLE
+✅ HTTPS
+✅ NVS Storage
+✅ ADC para sensores
+✅ GPIO para LEDs
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎬 PASOS FINALES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Configura Arduino IDE (como arriba)
+
+2. Abre biosense_esp32_SECURE.ino
+
+3. Presiona Upload (Ctrl+U)
+
+4. En Serial Monitor (115200), busca:
+   ✅ "Iniciando configuración..."
+   ✅ "BLE Iniciado"
+
+5. Abre BioSenseIoT App en tu móvil
+
+6. Presiona "Sincronizar Hardware"
+
+7. En Serial Monitor:
+   ✅ "WiFi conectado"
+   ✅ "📤 Enviando datos al backend (SEGURO)..."
+   ✅ "✅ Datos guardados correctamente en la BD!"
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Status: ✅ LISTO PARA COMPILAR Y FLASHEAR
+
+Board:    ESP32 Dev Module
+Port:     COM8
+Archivo:  biosense_esp32_SECURE.ino
+Próximo:  Sketch → Upload

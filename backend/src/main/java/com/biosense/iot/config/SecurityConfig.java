@@ -50,7 +50,7 @@ public class SecurityConfig {
                 }))
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers("/api/v2/auth/**").permitAll()
-                        .pathMatchers(HttpMethod.POST, "/api/v2/sensors/reading").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/api/v2/sensors/reading").authenticated()
                         .pathMatchers("/api/v2/devices/**").authenticated()
                         .pathMatchers("/api/v2/diagnostics/**").authenticated()
                         .anyExchange().authenticated())

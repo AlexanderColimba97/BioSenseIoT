@@ -42,15 +42,12 @@ CREATE TABLE IF NOT EXISTS pets (
 -- Devices table
 CREATE TABLE IF NOT EXISTS devices (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     mac_address VARCHAR(17) UNIQUE NOT NULL,
     name VARCHAR(100),
     api_secret VARCHAR(255),
     last_seen TIMESTAMP WITH TIME ZONE
 );
-
--- Make sure existing device table can store unlinked ESP32 devices until a user links them
-ALTER TABLE IF EXISTS devices ALTER COLUMN user_id DROP NOT NULL;
 
 -- Add api_secret column to existing databases (idempotent)
 -- ALTERNATIVA: Si el error persiste, comenta la siguiente línea y ejecuta manualmente en pgAdmin
@@ -60,10 +57,12 @@ ALTER TABLE IF EXISTS devices ALTER COLUMN user_id DROP NOT NULL;
 CREATE TABLE IF NOT EXISTS sensor_readings (
     id BIGSERIAL PRIMARY KEY,
     device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    reading_id VARCHAR(255),
     mq4_value DOUBLE PRECISION NOT NULL,
     mq7_value DOUBLE PRECISION NOT NULL,
     mq135_value DOUBLE PRECISION NOT NULL,
-    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    UNIQUE(device_id, reading_id)
 );
 
 -- AI Diagnostics results

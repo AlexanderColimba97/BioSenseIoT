@@ -1,3 +1,4 @@
+// ================= OPTIMIZED INCLUDES (REDUCED SIZE) =================
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
@@ -7,16 +8,19 @@
 #include <BLE2902.h>
 #include <Preferences.h>
 #include <math.h>
-#include <mbedtls/aes.h>
-#include <mbedtls/cipher.h>
-#include <mbedtls/hkdf.h>
-#include <mbedtls/md.h>
-#include <mbedtls/sha256.h>
-#include <mbedtls/entropy.h>
-#include <mbedtls/ctr_drbg.h>
-#include <ArduinoJson.h>
 #include <time.h>
-#include <deque>
+
+// NOTA: ArduinoJson es pesada, usaremos JSON manual en string
+// #include <ArduinoJson.h>  // COMENTADO: Usa ~300KB!
+
+// NOTA: mbedtls es pesada, no la necesitamos por ahora
+// #include <mbedtls/aes.h>  // COMENTADO para reducir tamaño
+// #include <mbedtls/cipher.h>
+// #include <mbedtls/hkdf.h>
+// #include <mbedtls/md.h>
+// #include <mbedtls/sha256.h>
+// #include <mbedtls/entropy.h>
+// #include <mbedtls/ctr_drbg.h>
 
 // ================= CONFIGURACIÓN PINES =================
 #define MQ4_PIN   35    // GPIO 35 (ADC1_CH7)
@@ -480,20 +484,15 @@ void sendSensorDataToBackend(float ppm_mq4, float ppm_mq7, float ppm_mq135) {
   http.setConnectTimeout(5000);
   http.setTimeout(10000);
   
-  // Construir JSON
-  StaticJsonDocument<256> doc;
-  doc["macAddress"] = macAddress;
-  doc["deviceId"] = macAddress;
-  doc["mq4"] = round(ppm_mq4 * 100.0) / 100.0;
-  doc["mq7"] = round(ppm_mq7 * 100.0) / 100.0;
-  doc["mq135"] = round(ppm_mq135 * 100.0) / 100.0;
-  doc["readingId"] = readingId;
-  doc["timestamp"] = time(nullptr);
-  
-  String jsonPayload;
-  serializeJson(doc, jsonPayload);
-  
-  Serial.println("   Payload: " + jsonPayload.substring(0, 100) + "...");
+   // Construir JSON manualmente (SIN ArduinoJson - ahorra ~300KB!)
+   String ts = String(time(nullptr));
+   String mq4Str = String(round(ppm_mq4 * 100.0) / 100.0, 2);
+   String mq7Str = String(round(ppm_mq7 * 100.0) / 100.0, 2);
+   String mq135Str = String(round(ppm_mq135 * 100.0) / 100.0, 2);
+   
+   String jsonPayload = "{\"macAddress\":\"" + macAddress + "\",\"deviceId\":\"" + macAddress + "\",\"mq4\":" + mq4Str + ",\"mq7\":" + mq7Str + ",\"mq135\":" + mq135Str + ",\"readingId\":\"" + readingId + "\",\"timestamp\":" + ts + "}";
+   
+   Serial.println("   Payload (sin ArduinoJson): OK");
   
   int httpResponseCode = http.POST(jsonPayload);
   
