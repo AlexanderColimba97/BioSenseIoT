@@ -153,7 +153,10 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
       
       const dataView = await Promise.race([readPromise, readTimeoutPromise]);
       const dec = new TextDecoder();
-      const hwMac = dec.decode(dataView);
+      const hwMac = dec.decode(dataView)
+        .replace(/\u0000/g, '')
+        .trim()
+        .toUpperCase();
       
       if (!hwMac || hwMac.length === 0) {
         throw new Error('MAC Address vacía recibida');
@@ -217,7 +220,21 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
       
       // 1. Vincular en backend y obtener apiSecret
       toast.info('Vinculando dispositivo en servidor...');
-      const device = await linkDevice(macAddress.toUpperCase(), deviceName);
+      const normalizedMac = macAddress
+        .replace(/\u0000/g, '')
+        .trim()
+        .replace(/-/g, ':')
+        .toUpperCase();
+      const normalizedName = deviceName.trim();
+
+      if (!MAC_REGEX.test(normalizedMac)) {
+        throw new Error(`Formato de MAC incorrecto: "${normalizedMac}". Usa AA:BB:CC:DD:EE:FF`);
+      }
+      if (!normalizedName) {
+        throw new Error('Nombre del dispositivo es requerido');
+      }
+
+      const device = await linkDevice(normalizedMac, normalizedName);
       
       if (!device.apiSecret) {
         throw new Error('El servidor no devolvió el API Secret');

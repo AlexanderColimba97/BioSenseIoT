@@ -98,7 +98,10 @@ export async function linkDevice(macAddress: string, deviceName: string): Promis
       
       try {
         const error = await response.json();
-        errorMsg = error.error || error.message || errorMsg;
+        errorMsg = error.error || error.message || error.status || errorMsg;
+        if (typeof errorMsg === 'string' && errorMsg.toLowerCase().startsWith('error:')) {
+          errorMsg = errorMsg.slice(6).trim();
+        }
       } catch {
         errorMsg = `Error ${response.status}: ${response.statusText}`;
       }
