@@ -1,5 +1,6 @@
 package com.biosense.iot.auth.infrastructure.adapter.out.persistence;
 
+import com.biosense.iot.exception.AuthException;
 import com.biosense.iot.device.domain.port.out.UserRepositoryPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.r2dbc.core.DatabaseClient;
@@ -14,10 +15,15 @@ public class R2dbcUserRepositoryAdapter implements UserRepositoryPort {
 
     @Override
     public Mono<Integer> getUserIdByEmail(String email) {
-        return databaseClient.sql("SELECT id FROM users WHERE email = :email")
-                .bind("email", email)
+        String normalizedEmail = email == null ? "" : email.trim();
+        if (normalizedEmail.isEmpty()) {
+            return Mono.error(new AuthException("Sesion invalida: email ausente en token"));
+        }
+
+        return databaseClient.sql("SELECT id FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM(:email))")
+                .bind("email", normalizedEmail)
                 .map(row -> row.get("id", Integer.class))
                 .first()
-                .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found: " + email)));
+                .switchIfEmpty(Mono.error(new AuthException("Sesion invalida: usuario no encontrado")));
     }
 }
