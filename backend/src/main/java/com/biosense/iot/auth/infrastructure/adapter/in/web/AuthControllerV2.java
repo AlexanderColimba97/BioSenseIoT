@@ -60,20 +60,27 @@ public class AuthControllerV2 {
     @PostMapping("/refresh")
     public Mono<ResponseEntity<AuthResponse>> refreshToken(@RequestBody Map<String, String> request) {
         String refreshToken = request.get("refreshToken");
-        if (refreshToken == null || refreshToken.isEmpty()) {
+        String accessToken = request.get("accessToken");
+
+        if ((refreshToken == null || refreshToken.isEmpty()) && (accessToken == null || accessToken.isEmpty())) {
             return Mono.just(ResponseEntity.status(401).body(null));
         }
 
+        String tokenToUse = (refreshToken != null && !refreshToken.isEmpty()) ? refreshToken : accessToken;
+
         try {
-            // Validar el refresh token
-            String email = jwtAdapter.extractUsername(refreshToken);
+            // Validar el token recibido. Si es access token, solo se usa como fallback
+            // cuando el refresh token se perdió en el cliente.
+            String email = jwtAdapter.extractUsername(tokenToUse);
 
             if (email == null || email.isEmpty()) {
                 return Mono.just(ResponseEntity.status(401).build());
             }
 
-            // Validar que el token no esté expirado
-            if (jwtAdapter.isTokenExpired(refreshToken)) {
+            // Si se usa refresh token, exigimos que no haya expirado.
+            // Si se usa access token como fallback, también exigimos vigencia para no
+            // abrir una renovación insegura con tokens vencidos.
+            if (jwtAdapter.isTokenExpired(tokenToUse)) {
                 log.warn("Refresh token expirado para usuario: {}", email);
                 return Mono.just(ResponseEntity.status(401).build());
             }
