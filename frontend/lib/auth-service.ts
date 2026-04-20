@@ -25,6 +25,22 @@ const STORAGE_KEYS = {
 export class AuthService {
   private static tokenRefreshTimeout: NodeJS.Timeout | null = null;
 
+  private static getJwtExpirationMs(token: string): number | null {
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) return null;
+
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64.padEnd(base64.length + (4 - (base64.length % 4)) % 4, '=');
+      const payload = JSON.parse(atob(padded));
+
+      if (!payload || typeof payload.exp !== 'number') return null;
+      return payload.exp * 1000;
+    } catch {
+      return null;
+    }
+  }
+
   private static readStoredValue(key: string): string | null {
     if (typeof window === 'undefined') return null;
 
@@ -58,6 +74,12 @@ export class AuthService {
     
     // Si no hay token, está expirado
     if (!token) return true;
+
+    // Preferir exp del JWT si está disponible.
+    const jwtExpiryMs = this.getJwtExpirationMs(token);
+    if (jwtExpiryMs) {
+      return Date.now() >= (jwtExpiryMs - 60000);
+    }
     
     // Si hay token pero no hay expiración guardada
     if (!expiry) {

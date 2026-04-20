@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS ai_diagnostics (
 -- 2. INDEXES (Idempotentes)
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_device_id ON sensor_readings(device_id);
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_timestamp ON sensor_readings(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_sensor_readings_device_timestamp ON sensor_readings(device_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_sensor_readings_reading_id ON sensor_readings(reading_id) WHERE reading_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_ai_diagnostics_user_id ON ai_diagnostics(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_diagnostics_user_timestamp ON ai_diagnostics(user_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_diagnostics_reading_id ON ai_diagnostics(reading_id);
 CREATE INDEX IF NOT EXISTS idx_pets_user_id ON pets(user_id);
 CREATE INDEX IF NOT EXISTS idx_devices_mac_address ON devices(mac_address);
+CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id) WHERE user_id IS NOT NULL;

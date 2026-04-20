@@ -66,22 +66,40 @@ public class AuthControllerV2 {
             return Mono.just(ResponseEntity.status(401).body(null));
         }
 
-        String tokenToUse = (refreshToken != null && !refreshToken.isEmpty()) ? refreshToken : accessToken;
+        String tokenToUse = null;
+        String email = null;
 
         try {
-            // Validar el token recibido. Si es access token, solo se usa como fallback
-            // cuando el refresh token se perdió en el cliente.
-            String email = jwtAdapter.extractUsername(tokenToUse);
+            // 1) Intentar con refresh token primero (si existe y sigue vigente).
+            if (refreshToken != null && !refreshToken.isEmpty()) {
+                try {
+                    if (!jwtAdapter.isTokenExpired(refreshToken)) {
+                        email = jwtAdapter.extractUsername(refreshToken);
+                        tokenToUse = refreshToken;
+                    }
+                } catch (Exception e) {
+                    log.debug("Refresh token inválido durante fallback: {}", e.getMessage());
+                }
+            }
 
-            if (email == null || email.isEmpty()) {
+            // 2) Fallback a access token si el refresh token está vencido o inválido.
+            if ((tokenToUse == null || tokenToUse.isEmpty()) && accessToken != null && !accessToken.isEmpty()) {
+                try {
+                    if (!jwtAdapter.isTokenExpired(accessToken)) {
+                        email = jwtAdapter.extractUsername(accessToken);
+                        tokenToUse = accessToken;
+                        log.warn("Usando access token como fallback para refresh de sesión");
+                    }
+                } catch (Exception e) {
+                    log.debug("Access token inválido durante fallback: {}", e.getMessage());
+                }
+            }
+
+            if (tokenToUse == null || tokenToUse.isEmpty()) {
                 return Mono.just(ResponseEntity.status(401).build());
             }
 
-            // Si se usa refresh token, exigimos que no haya expirado.
-            // Si se usa access token como fallback, también exigimos vigencia para no
-            // abrir una renovación insegura con tokens vencidos.
-            if (jwtAdapter.isTokenExpired(tokenToUse)) {
-                log.warn("Refresh token expirado para usuario: {}", email);
+            if (email == null || email.isEmpty()) {
                 return Mono.just(ResponseEntity.status(401).build());
             }
 
