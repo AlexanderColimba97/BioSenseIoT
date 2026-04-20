@@ -23,10 +23,10 @@ public class JwtAdapter implements TokenProviderPort {
     private String secret;
 
     @Value("${jwt.expiration:3600000}")
-    private Long accessTokenExpiration;  // 1 hora
+    private Long accessTokenExpiration; // 1 hora
 
     @Value("${jwt.refresh-expiration:604800000}")
-    private Long refreshTokenExpiration;  // 7 días
+    private Long refreshTokenExpiration; // 7 días
 
     @Override
     public String generateToken(String email) {
@@ -40,21 +40,22 @@ public class JwtAdapter implements TokenProviderPort {
         Map<String, Object> claims = new HashMap<>();
         claims.put("type", "user");
         claims.put("scope", "access");
-        
+
         return Jwts.builder()
                 .claims(claims)
                 .subject(email)
                 .issuedAt(new Date(System.currentTimeMillis()))
                 .expiration(new Date(System.currentTimeMillis() + accessTokenExpiration))
-                .signWith(getSignInKey())
+                .signWith(getSignInKey(), Jwts.SIG.HS256)
                 .compact();
     }
 
     /**
      * Genera un token para dispositivos IoT con claims específicos
-     * @param deviceId ID único del dispositivo
+     * 
+     * @param deviceId   ID único del dispositivo
      * @param macAddress MAC del dispositivo
-     * @param userId ID del usuario propietario
+     * @param userId     ID del usuario propietario
      */
     public String generateDeviceToken(String deviceId, String macAddress, Integer userId) {
         Map<String, Object> claims = new HashMap<>();
@@ -63,13 +64,13 @@ public class JwtAdapter implements TokenProviderPort {
         claims.put("mac", macAddress);
         claims.put("userId", userId);
         claims.put("scope", "sensor-write");
-        
+
         return Jwts.builder()
                 .claims(claims)
                 .subject(deviceId)
                 .issuedAt(new Date(System.currentTimeMillis()))
                 .expiration(new Date(System.currentTimeMillis() + accessTokenExpiration))
-                .signWith(getSignInKey())
+                .signWith(getSignInKey(), Jwts.SIG.HS256)
                 .compact();
     }
 
@@ -80,13 +81,13 @@ public class JwtAdapter implements TokenProviderPort {
         Map<String, Object> claims = new HashMap<>();
         claims.put("type", "user");
         claims.put("scope", "refresh");
-        
+
         return Jwts.builder()
                 .claims(claims)
                 .subject(email)
                 .issuedAt(new Date(System.currentTimeMillis()))
                 .expiration(new Date(System.currentTimeMillis() + refreshTokenExpiration))
-                .signWith(getSignInKey())
+                .signWith(getSignInKey(), Jwts.SIG.HS256)
                 .compact();
     }
 
@@ -109,10 +110,10 @@ public class JwtAdapter implements TokenProviderPort {
         try {
             final String tokenDeviceId = extractClaim(token, claims -> (String) claims.get("deviceId"));
             final String tokenType = extractClaim(token, claims -> (String) claims.get("type"));
-            
-            return "device".equals(tokenType) && 
-                   constantTimeEquals(tokenDeviceId, deviceId) && 
-                   !isTokenExpired(token);
+
+            return "device".equals(tokenType) &&
+                    constantTimeEquals(tokenDeviceId, deviceId) &&
+                    !isTokenExpired(token);
         } catch (Exception e) {
             return false;
         }
@@ -170,10 +171,10 @@ public class JwtAdapter implements TokenProviderPort {
         if (a == null || b == null) {
             return a == b;
         }
-        
+
         byte[] aBytes = a.getBytes(StandardCharsets.UTF_8);
         byte[] bBytes = b.getBytes(StandardCharsets.UTF_8);
-        
+
         try {
             return MessageDigest.isEqual(aBytes, bBytes);
         } catch (Exception e) {
