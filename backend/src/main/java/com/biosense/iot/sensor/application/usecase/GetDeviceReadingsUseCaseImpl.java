@@ -22,9 +22,9 @@ public class GetDeviceReadingsUseCaseImpl implements GetDeviceReadingsUseCase {
     public Flux<SensorReadingDomain> execute(String userEmail, Integer deviceId, Integer limit) {
         return userRepositoryPort.getUserIdByEmail(userEmail)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found: " + userEmail)))
-                .flatMap(userId -> deviceRepositoryPort.findById(deviceId)
-                        .switchIfEmpty(Mono.error(new IllegalArgumentException("Device not found")))
-                        .filter(device -> device.getUserId() != null && device.getUserId().equals(userId))
+                .flatMap(userId -> deviceRepositoryPort.getUserDevices(userId)
+                        .filter(device -> device.getId() != null && device.getId().equals(deviceId))
+                        .next()
                         .switchIfEmpty(Mono.error(new IllegalArgumentException("Device does not belong to user"))))
                 .flatMapMany(device -> sensorReadingRepositoryPort.getReadingsByDeviceId(deviceId, limit));
     }

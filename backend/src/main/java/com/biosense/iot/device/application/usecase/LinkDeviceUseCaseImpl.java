@@ -77,14 +77,13 @@ public class LinkDeviceUseCaseImpl implements LinkDeviceUseCase {
         public Mono<Void> unlink(String userEmail, Integer deviceId) {
                 return userRepositoryPort.getUserIdByEmail(userEmail)
                                 .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found: " + userEmail)))
-                                .flatMap(userId -> deviceRepositoryPort.findById(deviceId)
-                                                .switchIfEmpty(Mono.error(
-                                                                new IllegalArgumentException("Device not found")))
-                                                .filter(device -> device.getUserId() != null
-                                                                && device.getUserId().equals(userId))
+                                .flatMap(userId -> deviceRepositoryPort.getUserDevices(userId)
+                                                .filter(device -> device.getId() != null
+                                                                && device.getId().equals(deviceId))
+                                                .next()
                                                 .switchIfEmpty(Mono.error(new IllegalArgumentException(
                                                                 "Device does not belong to user")))
-                                                .flatMap(device -> deviceRepositoryPort.unlinkDevice(deviceId)))
+                                                .flatMap(device -> deviceRepositoryPort.unlinkDevice(deviceId, userId)))
                                 .doOnSuccess(v -> log.info("Device unlinked: {}", deviceId))
                                 .doOnError(e -> log.error("Error unlinking device: {}", e.getMessage()));
         }

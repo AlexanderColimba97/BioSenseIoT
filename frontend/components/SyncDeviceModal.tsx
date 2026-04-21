@@ -18,6 +18,7 @@ interface SyncDeviceModalProps {
 
 const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+const RESET_WIFI_COMMAND = 'RESET_WIFI';
 const MAC_REGEX = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/;
 
 type NativeDevice = { deviceId: string; name?: string };
@@ -93,7 +94,7 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
       await BleClient.requestLEScan(
         { services: [SERVICE_UUID] },
         (result: any) => {
-          if (result?.device?.name?.startsWith('BioSense')) {
+          if (result?.device?.deviceId) {
             setDevices((prev) => {
               const exists = prev.find((d) => d.deviceId === result.device.deviceId);
               if (exists) return prev;
@@ -110,7 +111,7 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
           // Ignore stop errors
         }
         setScanning(false);
-      }, 8000);
+      }, 15000);
     } catch (error) {
       console.error('Scan error:', error);
       toast.error('Error al escanear: ' + (error instanceof Error ? error.message : 'Unknown'));
@@ -282,6 +283,40 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
     }
   };
 
+  const handleForgetWifi = async () => {
+    if (!selectedDevice) {
+      toast.error('Primero conecta un dispositivo');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const BleClient = await getBleClient();
+      if (!BleClient) {
+        throw new Error('Bluetooth no disponible');
+      }
+
+      const cmd = new TextEncoder().encode(RESET_WIFI_COMMAND);
+      await BleClient.write(
+        selectedDevice.deviceId,
+        SERVICE_UUID,
+        CHARACTERISTIC_UUID,
+        new DataView(cmd.buffer)
+      );
+
+      toast.success('✅ Comando enviado. El ESP32 olvidará la WiFi y se reiniciará.');
+      setSelectedDevice(null);
+      setMacAddress('');
+      setWifiSsid('');
+      setWifiPassword('');
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
+      toast.error('No se pudo resetear WiFi: ' + errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ─── Browser fallback UI ───────────────────────────────────────────────────
   if (IS_WEB) {
     return (
@@ -404,6 +439,9 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
               <div className="flex gap-2 justify-end pt-4">
                 <Button onClick={onClose} variant="outline" disabled={loading}>
                   Cancelar
+                </Button>
+                <Button onClick={handleForgetWifi} variant="outline" disabled={loading}>
+                  Olvidar WiFi en ESP32
                 </Button>
                 <Button onClick={handleSync} disabled={loading} className="bg-green-600 hover:bg-green-700">
                   {loading ? 'Sincronizando...' : 'Vincular y Configurar'}

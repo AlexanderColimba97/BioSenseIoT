@@ -11,7 +11,7 @@ public interface DeviceRepositoryPort {
 
     Mono<DeviceDomain> findById(Integer deviceId);
 
-    Mono<Void> unlinkDevice(Integer deviceId);
+    Mono<Void> unlinkDevice(Integer deviceId, Integer userId);
 
     Mono<DeviceDomain> findByMacAddress(String macAddress);
 }

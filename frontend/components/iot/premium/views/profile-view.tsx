@@ -26,6 +26,7 @@ interface ProfileViewProps {
 }
 
 export function ProfileView({ onNavigateToDashboard }: ProfileViewProps) {
+  const currentUser = AuthService.getCurrentUser()
   const [darkMode, setDarkMode] = useState(false)
   const [notifications, setNotifications] = useState(true)
   const [language, setLanguage] = useState("Español")
@@ -49,8 +50,8 @@ export function ProfileView({ onNavigateToDashboard }: ProfileViewProps) {
     loadDevices()
   }, [])
 
-  const handleLogout = () => {
-    AuthService.logout();
+  const handleLogout = async () => {
+    await AuthService.logout();
     window.location.reload();
   };
 
@@ -85,11 +86,11 @@ export function ProfileView({ onNavigateToDashboard }: ProfileViewProps) {
         <div className="bg-card rounded-3xl border border-border/50 p-5 shadow-sm">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center text-2xl font-bold text-white shadow-lg shadow-primary/20">
-              AC
+              {(currentUser?.fullName || currentUser?.email || 'B').slice(0, 2).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="font-bold text-lg">Alex Colimba</h2>
-              <p className="text-sm text-muted-foreground truncate">alexis10129706@gmail.com</p>
+              <h2 className="font-bold text-lg">{currentUser?.fullName || 'Usuario'}</h2>
+              <p className="text-sm text-muted-foreground truncate">{currentUser?.email || 'Sin correo'}</p>
             </div>
             <Button variant="secondary" size="icon" className="rounded-xl">
               <Pencil className="w-4 h-4" />

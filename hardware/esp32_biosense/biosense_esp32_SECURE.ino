@@ -45,11 +45,20 @@
 // ================= VARIABLES GLOBALES =================
 Preferences preferences;
 bool bleActive = false;
+bool blockUntilProvisioned = false;
 String macAddress = "";
 String apiSecret = "";
 String jwtToken = "";
 uint32_t bootCounter = 0;
 uint32_t bootNonce = 0;
+String configuredSsid = "";
+String configuredPassword = "";
+
+// Keep BLE visible even when WiFi is configured so users can reprovision/reset.
+const bool BLE_RECONFIG_ALWAYS_AVAILABLE = true;
+const char* BLE_RESET_WIFI_COMMAND = "RESET_WIFI";
+const unsigned long WIFI_RETRY_INTERVAL = 10000;
+unsigned long lastWiFiRetryAttempt = 0;
 
 // Buffer para deduplicación de lecturas
 struct SensorReading {
@@ -295,8 +304,23 @@ class BLECallbacks: public BLECharacteristicCallbacks {
       for (size_t i = 0; i < len; i++) {
         payload += (char)data[i];
       }
+      payload.trim();
       
       Serial.println("\n📥 [BLE] Datos recibidos: " + payload);
+
+      if (payload.equalsIgnoreCase(BLE_RESET_WIFI_COMMAND)) {
+        Serial.println("🧹 Comando RESET_WIFI recibido. Borrando credenciales...");
+        preferences.begin("biosense", false);
+        preferences.remove("ssid");
+        preferences.remove("password");
+        preferences.remove("api_secret");
+        preferences.end();
+
+        Serial.println("✅ Credenciales eliminadas. Reiniciando ESP32 en 2 segundos...");
+        delay(2000);
+        ESP.restart();
+        return;
+      }
       
       int firstComma = payload.indexOf(',');
       
@@ -575,22 +599,30 @@ void setup() {
   String savedPassword = preferences.getString("password", "");
   apiSecret = preferences.getString("api_secret", "");
   preferences.end();
+
+  configuredSsid = savedSSID;
+  configuredPassword = savedPassword;
   
   if (savedSSID == "") {
     Serial.println("❌ No hay WiFi guardado. Entrando en modo SINCRONIZACIÓN.\n");
+    blockUntilProvisioned = true;
     initializeBLE();
     startupTime = millis() + STARTUP_WARMUP_TIME;
   } else {
     Serial.println("✅ Credenciales encontradas.");
     Serial.println("   SSID: " + savedSSID);
+
+    if (BLE_RECONFIG_ALWAYS_AVAILABLE) {
+      Serial.println("📡 BLE de reconfiguración habilitado (visible aunque haya WiFi guardada).");
+      initializeBLE();
+    }
     
     bool wifiConnected = connectToWiFi(savedSSID, savedPassword);
     
     if (!wifiConnected) {
       Serial.println("\n⚠️ WiFi falló en el primer intento.");
-      Serial.println("🔄 Reiniciando en 3 segundos y reintentando...\n");
-      delay(3000);
-      ESP.restart();
+      Serial.println("🔁 Se reintentará conexión automáticamente cada 10 segundos.");
+      lastWiFiRetryAttempt = millis();
     }
     startupTime = millis() + STARTUP_WARMUP_TIME;
   }
@@ -600,8 +632,18 @@ void setup() {
 
 // ================= LOOP PRINCIPAL =================
 void loop() {
-  if (bleActive) {
+  if (blockUntilProvisioned) {
     delay(1000);
+    return;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    if (millis() - lastWiFiRetryAttempt >= WIFI_RETRY_INTERVAL && configuredSsid.length() > 0) {
+      lastWiFiRetryAttempt = millis();
+      Serial.println("🔁 Reintentando conexión WiFi...");
+      connectToWiFi(configuredSsid, configuredPassword);
+    }
+    delay(200);
     return;
   }
   

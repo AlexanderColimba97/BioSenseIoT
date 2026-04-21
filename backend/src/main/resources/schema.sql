@@ -49,6 +49,16 @@ CREATE TABLE IF NOT EXISTS devices (
     last_seen TIMESTAMP WITH TIME ZONE
 );
 
+-- User-device access mapping (many-to-many)
+CREATE TABLE IF NOT EXISTS user_devices (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL DEFAULT 'viewer',
+    shared_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_user_devices_user_device UNIQUE (user_id, device_id)
+);
+
 -- Backward compatibility for legacy devices table variants.
 ALTER TABLE IF EXISTS devices
 ADD COLUMN IF NOT EXISTS name VARCHAR(100);
@@ -58,6 +68,21 @@ ADD COLUMN IF NOT EXISTS api_secret VARCHAR(255);
 
 ALTER TABLE IF EXISTS devices
 ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE IF EXISTS user_devices
+ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'viewer';
+
+ALTER TABLE IF EXISTS user_devices
+ADD COLUMN IF NOT EXISTS shared_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+
+-- Backfill owner access for already-linked legacy devices
+INSERT INTO user_devices (user_id, device_id, role)
+SELECT d.user_id, d.id, 'owner'
+FROM devices d
+LEFT JOIN user_devices ud
+        ON ud.user_id = d.user_id AND ud.device_id = d.id
+WHERE d.user_id IS NOT NULL
+    AND ud.id IS NULL;
 
 -- Add api_secret column to existing databases (idempotent)
 -- ALTERNATIVA: Si el error persiste, comenta la siguiente línea y ejecuta manualmente en pgAdmin
@@ -105,3 +130,5 @@ CREATE INDEX IF NOT EXISTS idx_ai_diagnostics_reading_id ON ai_diagnostics(readi
 CREATE INDEX IF NOT EXISTS idx_pets_user_id ON pets(user_id);
 CREATE INDEX IF NOT EXISTS idx_devices_mac_address ON devices(mac_address);
 CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_user_devices_user_id ON user_devices(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_devices_device_id ON user_devices(device_id);

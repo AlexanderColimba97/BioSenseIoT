@@ -19,8 +19,14 @@ if (typeof window !== 'undefined') {
 const STORAGE_KEYS = {
   ACCESS_TOKEN: 'auth_token',
   REFRESH_TOKEN: 'refresh_token',
-  TOKEN_EXPIRY: 'token_expiry'
+  TOKEN_EXPIRY: 'token_expiry',
+  USER_PROFILE: 'auth_user'
 };
+
+export interface StoredUserProfile {
+  email: string;
+  fullName?: string;
+}
 
 export class AuthService {
   private static tokenRefreshTimeout: NodeJS.Timeout | null = null;
@@ -59,6 +65,18 @@ export class AuthService {
 
     localStorage.removeItem(key);
     sessionStorage.removeItem(key);
+  }
+
+  private static clearAuthState(): void {
+    this.removeStoredValue(STORAGE_KEYS.ACCESS_TOKEN);
+    this.removeStoredValue(STORAGE_KEYS.REFRESH_TOKEN);
+    this.removeStoredValue(STORAGE_KEYS.TOKEN_EXPIRY);
+    this.removeStoredValue(STORAGE_KEYS.USER_PROFILE);
+    this.removeStoredValue('TOKEN_STORED_AT');
+    this.removeStoredValue('token');
+    this.removeStoredValue('user');
+    this.removeStoredValue('device_activated');
+    this.removeStoredValue('device_status');
   }
 
   /**
@@ -132,10 +150,7 @@ export class AuthService {
         return newToken;
       } catch (error) {
         // Si falla el refresh, requiere login
-        this.removeStoredValue(STORAGE_KEYS.ACCESS_TOKEN);
-        this.removeStoredValue(STORAGE_KEYS.REFRESH_TOKEN);
-        this.removeStoredValue(STORAGE_KEYS.TOKEN_EXPIRY);
-        this.removeStoredValue('TOKEN_STORED_AT');
+        this.clearAuthState();
         throw new Error('Tu sesión expiró. Por favor inicia sesión nuevamente.');
       }
     }
@@ -211,18 +226,19 @@ export class AuthService {
   /**
    * Guarda los tokens con su tiempo de expiración
    */
-  private static storeTokens(accessToken: string, refreshToken?: string): void {
+  private static storeTokens(accessToken: string, refreshToken?: string, user?: StoredUserProfile): void {
     if (typeof window === 'undefined') return;
 
     try {
-      this.removeStoredValue(STORAGE_KEYS.ACCESS_TOKEN);
-      this.removeStoredValue(STORAGE_KEYS.REFRESH_TOKEN);
-      this.removeStoredValue(STORAGE_KEYS.TOKEN_EXPIRY);
-      this.removeStoredValue('TOKEN_STORED_AT');
+      this.clearAuthState();
 
       this.writeStoredValue(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
       if (refreshToken) {
         this.writeStoredValue(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+      }
+
+      if (user) {
+        this.writeStoredValue(STORAGE_KEYS.USER_PROFILE, JSON.stringify(user));
       }
 
       // Calcular expiración (generalmente JWT expira en 1 hora)
@@ -283,7 +299,10 @@ export class AuthService {
       }
 
       const data: AuthResponse = await response.json();
-      this.storeTokens(data.accessToken, data.refreshToken);
+      this.storeTokens(data.accessToken, data.refreshToken, {
+        email: data.email,
+        fullName: data.fullName,
+      });
       return data;
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error desconocido';
@@ -304,7 +323,10 @@ export class AuthService {
       }
 
       const data: AuthResponse = await response.json();
-      this.storeTokens(data.accessToken, data.refreshToken);
+      this.storeTokens(data.accessToken, data.refreshToken, {
+        email,
+        fullName: data.fullName,
+      });
       return data;
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error desconocido';
@@ -325,7 +347,10 @@ export class AuthService {
       }
 
       const data: AuthResponse = await response.json();
-      this.storeTokens(data.accessToken, data.refreshToken);
+      this.storeTokens(data.accessToken, data.refreshToken, {
+        email,
+        fullName: data.fullName,
+      });
       return data;
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error desconocido';
@@ -333,13 +358,10 @@ export class AuthService {
     }
   }
 
-  static logout(): void {
+  static async logout(): Promise<void> {
     if (typeof window === 'undefined') return;
-    
-    this.removeStoredValue(STORAGE_KEYS.ACCESS_TOKEN);
-    this.removeStoredValue(STORAGE_KEYS.REFRESH_TOKEN);
-    this.removeStoredValue(STORAGE_KEYS.TOKEN_EXPIRY);
-    this.removeStoredValue('TOKEN_STORED_AT');
+
+    this.clearAuthState();
     
     if (this.tokenRefreshTimeout) {
       clearTimeout(this.tokenRefreshTimeout);
@@ -347,7 +369,7 @@ export class AuthService {
     }
 
     if (Capacitor.isNativePlatform()) {
-      GoogleAuth.signOut();
+      await GoogleAuth.signOut();
     }
   }
 
@@ -356,6 +378,40 @@ export class AuthService {
       return this.readStoredValue(STORAGE_KEYS.ACCESS_TOKEN);
     }
     return null;
+  }
+
+  static getCurrentUser(): StoredUserProfile | null {
+    if (typeof window === 'undefined') return null;
+
+    const storedUser = this.readStoredValue(STORAGE_KEYS.USER_PROFILE);
+    if (storedUser) {
+      try {
+        return JSON.parse(storedUser) as StoredUserProfile;
+      } catch {
+        // Fallback below
+      }
+    }
+
+    const token = this.getToken();
+    if (!token) return null;
+
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) return null;
+
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64.padEnd(base64.length + (4 - (base64.length % 4)) % 4, '=');
+      const payload = JSON.parse(atob(padded));
+
+      if (typeof payload.sub !== 'string' || !payload.sub.trim()) return null;
+
+      return {
+        email: payload.sub,
+        fullName: typeof payload.fullName === 'string' ? payload.fullName : undefined,
+      };
+    } catch {
+      return null;
+    }
   }
 
   static isAuthenticated(): boolean {

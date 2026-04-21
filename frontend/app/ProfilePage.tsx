@@ -18,14 +18,13 @@ export default function ProfilePage() {
   const [devices, setDevices] = useState<Device[]>([]);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = AuthService.getToken();
     if (!token) {
       router.push('/');
       return;
     }
 
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    setUser(user);
+    setUser(AuthService.getCurrentUser());
     
     loadUserDevices();
     setLoading(false);
@@ -41,8 +40,8 @@ export default function ProfilePage() {
     }
   };
 
-  const handleLogout = () => {
-  AuthService.logout(); // Llama al método estático
+  const handleLogout = async () => {
+  await AuthService.logout();
   router.push('/');
 };
 
