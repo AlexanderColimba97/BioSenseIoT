@@ -45,10 +45,9 @@ public class R2dbcSensorRepositoryAdapter implements DeviceRepositoryPort, Senso
 
         @Override
         public Mono<Void> updateLastSeenByDeviceId(Integer deviceId) {
-                return databaseClient.sql("UPDATE devices SET last_seen = NOW() WHERE id = :deviceId")
-                                .bind("deviceId", deviceId)
-                                .then();
-        }
+        return databaseClient.sql("UPDATE devices SET last_seen = NOW() WHERE id = :deviceId")
+                .bind("deviceId", deviceId)
+                .then();
 
         @Override
         public Flux<Integer> getUserIdsByDeviceId(Integer deviceId) {
