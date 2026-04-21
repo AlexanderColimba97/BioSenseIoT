@@ -58,7 +58,12 @@ String configuredPassword = "";
 const bool BLE_RECONFIG_ALWAYS_AVAILABLE = true;
 const char* BLE_RESET_WIFI_COMMAND = "RESET_WIFI";
 const unsigned long WIFI_RETRY_INTERVAL = 10000;
+const char* NTP_SERVER_PRIMARY = "pool.ntp.org";
+const char* NTP_SERVER_SECONDARY = "time.nist.gov";
+const unsigned long NTP_SYNC_TIMEOUT_MS = 8000;
+const unsigned long MIN_VALID_EPOCH = 1700000000UL;
 unsigned long lastWiFiRetryAttempt = 0;
+bool clockSynced = false;
 
 // Buffer para deduplicación de lecturas
 struct SensorReading {
@@ -495,6 +500,32 @@ bool connectToWiFi(String ssid, String password) {
   }
 }
 
+void syncClockIfNeeded(bool forceSync = false) {
+  if (WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+
+  if (clockSynced && !forceSync) {
+    return;
+  }
+
+  configTime(0, 0, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY);
+
+  time_t now = time(nullptr);
+  unsigned long startedAt = millis();
+  while (now < (time_t)MIN_VALID_EPOCH && (millis() - startedAt) < NTP_SYNC_TIMEOUT_MS) {
+    delay(250);
+    now = time(nullptr);
+  }
+
+  if (now >= (time_t)MIN_VALID_EPOCH) {
+    clockSynced = true;
+    Serial.printf("🕒 Clock synced (epoch=%lu)\n", (unsigned long)now);
+  } else {
+    Serial.println("⚠️ NTP sync timeout - using fallback timestamp");
+  }
+}
+
 // ================= FUNCIÓN: Enviar Datos al Backend (SEGURO) =================
 bool sendReading(const SensorSnapshot& sensorData) {
   const int maxRetries = 3;
@@ -515,6 +546,8 @@ bool sendReading(const SensorSnapshot& sensorData) {
     Serial.println("⚠️ API Secret no configurado. Saltando envio.");
     return false;
   }
+
+  syncClockIfNeeded();
   
   Serial.println("\n📤 Enviando lectura al backend...");
   
@@ -528,7 +561,11 @@ bool sendReading(const SensorSnapshot& sensorData) {
   String authHeader = "Bearer " + apiSecret;
   String url = "https://" + String(BACKEND_HOST) + "/api/v2/sensors/reading";
 
-  String ts = String(time(nullptr));
+  time_t epochNow = time(nullptr);
+  unsigned long tsValue = (epochNow >= (time_t)MIN_VALID_EPOCH)
+      ? (unsigned long)epochNow
+      : (MIN_VALID_EPOCH + (millis() / 1000UL));
+  String ts = String(tsValue);
   String coStr = String(round(sensorData.co * 100.0) / 100.0, 2);
   String ch4Str = String(round(sensorData.ch4 * 100.0) / 100.0, 2);
   String airStr = String(round(sensorData.airQuality * 100.0) / 100.0, 2);
@@ -564,6 +601,10 @@ bool sendReading(const SensorSnapshot& sensorData) {
     String responseBody = http.getString();
 
     Serial.printf("📤 POST #%d: %d\n", attempt, httpResponseCode);
+    if (responseBody.length() > 0) {
+      int maxLogLen = responseBody.length() > 200 ? 200 : responseBody.length();
+      Serial.println("↩️ " + responseBody.substring(0, maxLogLen));
+    }
 
     http.end();
 
@@ -652,6 +693,10 @@ void setup() {
     }
     
     bool wifiConnected = connectToWiFi(savedSSID, savedPassword);
+    if (wifiConnected) {
+      clockSynced = false;
+      syncClockIfNeeded(true);
+    }
     
     if (!wifiConnected) {
       Serial.println("⚠️ WiFi connect failed - will retry every 10s");
@@ -674,7 +719,11 @@ void loop() {
     if (millis() - lastWiFiRetryAttempt >= WIFI_RETRY_INTERVAL && configuredSsid.length() > 0) {
       lastWiFiRetryAttempt = millis();
       Serial.println("🔁 Reintentando conexión WiFi...");
-      connectToWiFi(configuredSsid, configuredPassword);
+      bool reconnected = connectToWiFi(configuredSsid, configuredPassword);
+      if (reconnected) {
+        clockSynced = false;
+        syncClockIfNeeded(true);
+      }
     }
     delay(200);
     return;

@@ -10,5 +10,7 @@ public interface DeviceRepositoryPort {
 
     Mono<Void> storeApiSecretByMacAddress(String macAddress, String apiSecret);
 
+    Mono<Void> updateLastSeenByDeviceId(Integer deviceId);
+
     Flux<Integer> getUserIdsByDeviceId(Integer deviceId);
 }

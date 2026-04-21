@@ -13,81 +13,89 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class R2dbcSensorRepositoryAdapter implements DeviceRepositoryPort, SensorReadingRepositoryPort {
 
-    private final DatabaseClient databaseClient;
+        private final DatabaseClient databaseClient;
 
-    @Override
-    public Mono<Integer> getLinkedDeviceId(String macAddress) {
-        return databaseClient.sql(
-                "SELECT d.id FROM devices d " +
-                        "WHERE d.mac_address = :mac " +
-                        "AND EXISTS (SELECT 1 FROM user_devices ud WHERE ud.device_id = d.id)")
-                .bind("mac", macAddress.toUpperCase())
-                .map(row -> row.get("id", Integer.class))
-                .first();
-    }
+        @Override
+        public Mono<Integer> getLinkedDeviceId(String macAddress) {
+                return databaseClient.sql(
+                                "SELECT d.id FROM devices d " +
+                                                "WHERE d.mac_address = :mac " +
+                                                "AND EXISTS (SELECT 1 FROM user_devices ud WHERE ud.device_id = d.id)")
+                                .bind("mac", macAddress.toUpperCase())
+                                .map(row -> row.get("id", Integer.class))
+                                .first();
+        }
 
-    @Override
-    public Mono<String> getApiSecretByMacAddress(String macAddress) {
-        return databaseClient.sql("SELECT api_secret FROM devices WHERE mac_address = :mac")
-                .bind("mac", macAddress.toUpperCase())
-                .map(row -> row.get("api_secret", String.class))
-                .first();
-    }
+        @Override
+        public Mono<String> getApiSecretByMacAddress(String macAddress) {
+                return databaseClient.sql("SELECT api_secret FROM devices WHERE mac_address = :mac")
+                                .bind("mac", macAddress.toUpperCase())
+                                .map(row -> row.get("api_secret", String.class))
+                                .first();
+        }
 
-    @Override
-    public Mono<Void> storeApiSecretByMacAddress(String macAddress, String apiSecret) {
-        return databaseClient
-                .sql("UPDATE devices SET api_secret = :apiSecret WHERE mac_address = :mac AND api_secret IS NULL")
-                .bind("mac", macAddress.toUpperCase())
-                .bind("apiSecret", apiSecret)
-                .then();
-    }
+        @Override
+        public Mono<Void> storeApiSecretByMacAddress(String macAddress, String apiSecret) {
+                return databaseClient
+                                .sql("UPDATE devices SET api_secret = :apiSecret WHERE mac_address = :mac AND api_secret IS NULL")
+                                .bind("mac", macAddress.toUpperCase())
+                                .bind("apiSecret", apiSecret)
+                                .then();
+        }
 
-    @Override
-    public Flux<Integer> getUserIdsByDeviceId(Integer deviceId) {
-        return databaseClient.sql("SELECT user_id FROM user_devices WHERE device_id = :deviceId")
-                .bind("deviceId", deviceId)
-                .map(row -> row.get("user_id", Integer.class))
-                .all();
-    }
+        @Override
+        public Mono<Void> updateLastSeenByDeviceId(Integer deviceId) {
+                return databaseClient.sql("UPDATE devices SET last_seen = NOW() WHERE id = :deviceId")
+                                .bind("deviceId", deviceId)
+                                .then();
+        }
 
-    @Override
-    public Mono<SensorReadingDomain> save(SensorReadingDomain reading) {
-        return databaseClient.sql(
-                "INSERT INTO sensor_readings (device_id, reading_id, mq4_value, mq7_value, mq135_value, timestamp) " +
-                        "VALUES (:did, :readingId, :mq4, :mq7, :mq135, NOW()) " +
-                        "ON CONFLICT (device_id, reading_id) DO NOTHING RETURNING id")
-                .bind("did", reading.getDeviceId())
-                .bind("readingId", reading.getReadingId())
-                .bind("mq4", reading.getMq4())
-                .bind("mq7", reading.getMq7())
-                .bind("mq135", reading.getMq135())
-                .map(row -> row.get("id", Long.class))
-                .first()
-                .map(id -> {
-                    reading.setId(id);
-                    return reading;
-                });
-    }
+        @Override
+        public Flux<Integer> getUserIdsByDeviceId(Integer deviceId) {
+                return databaseClient.sql("SELECT user_id FROM user_devices WHERE device_id = :deviceId")
+                                .bind("deviceId", deviceId)
+                                .map(row -> row.get("user_id", Integer.class))
+                                .all();
+        }
 
-    @Override
-    public Flux<SensorReadingDomain> getReadingsByDeviceId(Integer deviceId, Integer limit) {
-        return databaseClient.sql(
-                "SELECT id, device_id, mq4_value, mq7_value, mq135_value, timestamp " +
-                        "FROM sensor_readings WHERE device_id = :deviceId " +
-                        "ORDER BY timestamp DESC LIMIT :limit")
-                .bind("deviceId", deviceId)
-                .bind("limit", limit)
-                .map(row -> {
-                    SensorReadingDomain reading = new SensorReadingDomain(
-                            row.get("device_id", Integer.class),
-                            null,
-                            row.get("mq4_value", Double.class),
-                            row.get("mq7_value", Double.class),
-                            row.get("mq135_value", Double.class));
-                    reading.setId(row.get("id", Long.class));
-                    return reading;
-                })
-                .all();
-    }
+        @Override
+        public Mono<SensorReadingDomain> save(SensorReadingDomain reading) {
+                return databaseClient.sql(
+                                "INSERT INTO sensor_readings (device_id, reading_id, mq4_value, mq7_value, mq135_value, timestamp) "
+                                                +
+                                                "VALUES (:did, :readingId, :mq4, :mq7, :mq135, NOW()) " +
+                                                "ON CONFLICT (device_id, reading_id) DO NOTHING RETURNING id")
+                                .bind("did", reading.getDeviceId())
+                                .bind("readingId", reading.getReadingId())
+                                .bind("mq4", reading.getMq4())
+                                .bind("mq7", reading.getMq7())
+                                .bind("mq135", reading.getMq135())
+                                .map(row -> row.get("id", Long.class))
+                                .first()
+                                .map(id -> {
+                                        reading.setId(id);
+                                        return reading;
+                                });
+        }
+
+        @Override
+        public Flux<SensorReadingDomain> getReadingsByDeviceId(Integer deviceId, Integer limit) {
+                return databaseClient.sql(
+                                "SELECT id, device_id, mq4_value, mq7_value, mq135_value, timestamp " +
+                                                "FROM sensor_readings WHERE device_id = :deviceId " +
+                                                "ORDER BY timestamp DESC LIMIT :limit")
+                                .bind("deviceId", deviceId)
+                                .bind("limit", limit)
+                                .map(row -> {
+                                        SensorReadingDomain reading = new SensorReadingDomain(
+                                                        row.get("device_id", Integer.class),
+                                                        null,
+                                                        row.get("mq4_value", Double.class),
+                                                        row.get("mq7_value", Double.class),
+                                                        row.get("mq135_value", Double.class));
+                                        reading.setId(row.get("id", Long.class));
+                                        return reading;
+                                })
+                                .all();
+        }
 }

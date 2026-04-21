@@ -43,7 +43,8 @@ public class IngestSensorReadingUseCaseImpl implements IngestSensorReadingUseCas
                             return sensorReadingRepositoryPort.save(reading)
                                     .switchIfEmpty(Mono.error(
                                             new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate reading")))
-                                    .flatMap(savedReading -> generateAndSaveDiagnostic(deviceId, savedReading)
+                                    .flatMap(savedReading -> deviceRepositoryPort.updateLastSeenByDeviceId(deviceId)
+                                            .then(generateAndSaveDiagnostic(deviceId, savedReading))
                                             .thenReturn(savedReading));
                         })));
     }
