@@ -52,8 +52,12 @@ public class SecurityConfig {
                 }))
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .pathMatchers("/debug/**").permitAll()
                         .pathMatchers("/api/v2/auth/**").permitAll()
-                        .pathMatchers(HttpMethod.POST, "/api/v2/sensors/reading").authenticated()
+                        // ESP32 devices authenticate with apiSecret (Bearer), not JWT.
+                        // The secret is validated at application layer in
+                        // IngestSensorReadingUseCaseImpl.
+                        .pathMatchers(HttpMethod.POST, "/api/v2/sensors/reading").permitAll()
                         .pathMatchers("/api/v2/devices/**").authenticated()
                         .pathMatchers("/api/v2/diagnostics/**").authenticated()
                         .anyExchange().authenticated())

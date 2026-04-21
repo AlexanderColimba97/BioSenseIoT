@@ -30,10 +30,10 @@ public class IngestSensorReadingUseCaseImpl implements IngestSensorReadingUseCas
             return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing readingId"));
         }
 
-        return validateOrRegisterApiKey(macAddress, apiKey)
-                .then(deviceRepositoryPort.getLinkedDeviceId(macAddress)
-                        .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.FORBIDDEN, "Unlinked Device")))
-                        .flatMap(deviceId -> {
+        return deviceRepositoryPort.getLinkedDeviceId(macAddress)
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.FORBIDDEN, "Unlinked Device")))
+                .flatMap(deviceId -> validateOrRegisterApiKey(macAddress, apiKey)
+                        .then(Mono.defer(() -> {
                             SensorReadingDomain reading = new SensorReadingDomain(deviceId, readingId, mq4, mq7, mq135);
 
                             if (reading.getAirQualityState() == SensorReadingDomain.AirQualityState.DANGER) {
@@ -45,7 +45,7 @@ public class IngestSensorReadingUseCaseImpl implements IngestSensorReadingUseCas
                                             new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate reading")))
                                     .flatMap(savedReading -> generateAndSaveDiagnostic(deviceId, savedReading)
                                             .thenReturn(savedReading));
-                        }));
+                        })));
     }
 
     private Mono<Void> validateOrRegisterApiKey(String macAddress, String apiKey) {

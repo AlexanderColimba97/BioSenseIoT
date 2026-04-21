@@ -253,19 +253,9 @@ SensorSnapshot readSensors() {
 
   snapshot.valid = !(snapshot.rawMq4 == 0 && snapshot.rawMq7 == 0 && snapshot.rawMq135 == 0);
 
-  Serial.println("Valores ADC crudos:");
-  Serial.println("   MQ4:   " + String(snapshot.rawMq4) + "/4095");
-  Serial.println("   MQ7:   " + String(snapshot.rawMq7) + "/4095");
-  Serial.println("   MQ135: " + String(snapshot.rawMq135) + "/4095");
-
-  Serial.println("\nValores normalizados (PPM):");
-  Serial.printf("   CH4 (MQ4): %.2f ppm\n", snapshot.ch4);
-  Serial.printf("   CO  (MQ7): %.2f ppm\n", snapshot.co);
-  Serial.printf("   Air (MQ135): %.2f ppm\n", snapshot.airQuality);
-
-  if (!snapshot.valid) {
-    Serial.println("\n⚠️ ADVERTENCIA: Lectura invalida (todos los sensores en 0)");
-  }
+  // Log compacto: una sola línea con valores clave
+  Serial.printf("📊 CH4=%.1f | CO=%.1f | Air=%.1f | OK=%d\n", 
+                snapshot.ch4, snapshot.co, snapshot.airQuality, snapshot.valid);
 
   return snapshot;
 }
@@ -342,17 +332,17 @@ void updateLEDAlert(RiskLevel level) {
   switch (level) {
     case SAFE:
       digitalWrite(LED_GREEN, HIGH);
-      Serial.println("\n🟢 LED VERDE (GPIO 25) encendido - Aire Sano ✅");
+      Serial.println("🟢 SAFE");
       break;
       
     case WARNING:
       digitalWrite(LED_ORANGE, HIGH);
-      Serial.println("\n🟠 LED NARANJA (GPIO 26) encendido - Moderado ⚠️");
+      Serial.println("🟠 WARNING");
       break;
       
     case DANGER:
       digitalWrite(LED_RED, HIGH);
-      Serial.println("\n🔴 LED ROJO (GPIO 27) encendido - ¡PELIGRO! ⛔");
+      Serial.println("🔴 DANGER");
       break;
   }
 }
@@ -370,17 +360,17 @@ class BLECallbacks: public BLECharacteristicCallbacks {
       }
       payload.trim();
       
-      Serial.println("\n📥 [BLE] Datos recibidos: " + payload);
+      Serial.println("\n📥 BLE data received");
 
       if (payload.equalsIgnoreCase(BLE_RESET_WIFI_COMMAND)) {
-        Serial.println("🧹 Comando RESET_WIFI recibido. Borrando credenciales...");
+        Serial.println("🧹 RESET_WIFI command");
         preferences.begin("biosense", false);
         preferences.remove("ssid");
         preferences.remove("password");
         preferences.remove("api_secret");
         preferences.end();
 
-        Serial.println("✅ Credenciales eliminadas. Reiniciando ESP32 en 2 segundos...");
+        Serial.println("✅ Creds cleared - Restarting...");
         delay(2000);
         ESP.restart();
         return;
@@ -396,15 +386,7 @@ class BLECallbacks: public BLECharacteristicCallbacks {
         String password = (secondComma > 0) ? rest.substring(0, secondComma) : rest;
         String secret = (secondComma > 0) ? rest.substring(secondComma + 1) : "";
         
-        Serial.println("✅ Desglozando credenciales:");
-        Serial.println("   - SSID: " + ssid);
-        
-        String maskedPassword = "";
-        for (int i = 0; i < password.length(); i++) {
-          maskedPassword += "*";
-        }
-        Serial.println("   - PASS: " + maskedPassword);
-        Serial.println("   - SECRET: " + secret);
+        Serial.printf("✅ SSID: %s | SECRET: %s\n", ssid.c_str(), secret.c_str());
         
         preferences.begin("biosense", false);
         preferences.putString("ssid", ssid);
@@ -414,8 +396,8 @@ class BLECallbacks: public BLECharacteristicCallbacks {
         }
         preferences.end();
         
-        Serial.println("\n✅ Credenciales guardadas en memoria NVS encriptada.");
-        Serial.println("🔄 Reiniciando ESP32 en 2 segundos...\n");
+        Serial.println("✅ Creds saved to NVS");
+        Serial.println("🔄 Restarting in 2s...\n");
         
         delay(2000);
         ESP.restart();
@@ -429,11 +411,9 @@ class BLECallbacks: public BLECharacteristicCallbacks {
 // ================= FUNCIÓN: Inicializar BLE =================
 void initializeBLE() {
   bleActive = true;
-  Serial.println("\n📡 ===== INICIANDO MODO SINCRONIZACIÓN BLE =====");
   
   String bleName = "BioSense-" + macAddress.substring(12, 17);
-  Serial.println("   Nombre BLE: " + bleName);
-  Serial.println("   MAC: " + macAddress);
+  Serial.println("📡 BLE ready: " + bleName);
   
   BLEDevice::init(bleName.c_str());
   BLEDevice::setMTU(517);
@@ -477,16 +457,7 @@ void initializeBLE() {
   
   BLEDevice::startAdvertising();
   
-  Serial.println("\n✅ BLE COMPLETAMENTE OPERATIVO");
-  Serial.println("📱 INSTRUCCIONES PARA SINCRONIZAR:");
-  Serial.println("   1. Abre la App BioSense en tu Android");
-  Serial.println("   2. Ve a 'MI PERFIL'");
-  Serial.println("   3. Toca 'SINCRONIZAR'");
-  Serial.println("   4. Toca 'Escanear Bluetooth'");
-  Serial.println("   5. Selecciona: " + bleName);
-  Serial.println("   6. Completa los campos y toca 'Vincular'");
-  Serial.println("   7. El ESP32 se reiniciará automáticamente\n");
-  Serial.println("⏰ Esperando sincronización...\n");
+  Serial.println("✅ BLE READY - Scan: " + bleName);
 }
 
 // ================= FUNCIÓN: Conectar WiFi =================
@@ -580,7 +551,7 @@ bool sendReading(const SensorSnapshot& sensorData) {
     client.setInsecure();
 
     if (!http.begin(client, url)) {
-      Serial.println("❌ Error iniciando conexion HTTPS");
+      Serial.println("❌ HTTPS init failed");
       return false;
     }
 
@@ -589,50 +560,42 @@ bool sendReading(const SensorSnapshot& sensorData) {
     http.setConnectTimeout(6000);
     http.setTimeout(12000);
 
-    Serial.println("   Intento " + String(attempt) + "/" + String(maxRetries));
-    Serial.println("   Payload: " + jsonPayload);
-
     int httpResponseCode = http.POST(jsonPayload);
     String responseBody = http.getString();
 
-    Serial.print("   HTTP Response: ");
-    Serial.println(httpResponseCode);
-    if (responseBody.length() > 0) {
-      Serial.println("   Body: " + responseBody.substring(0, 180));
-    }
+    Serial.printf("📤 POST #%d: %d\n", attempt, httpResponseCode);
 
     http.end();
 
     if (httpResponseCode == 200 || httpResponseCode == 201) {
       addToBuffer(readingId, sensorData.ch4, sensorData.co, sensorData.airQuality);
-      Serial.println("✅ Lectura persistida correctamente.");
+      Serial.println("✅ Success");
       return true;
     }
 
     if (httpResponseCode == 409) {
       addToBuffer(readingId, sensorData.ch4, sensorData.co, sensorData.airQuality);
-      Serial.println("⚠️ Lectura duplicada detectada por backend (409). Se considera exitosa.");
+      Serial.println("✅ Duplicate (409) - OK");
       return true;
     }
 
     if (httpResponseCode == 401 || httpResponseCode == 403) {
-      Serial.println("🚫 Authorization fallida (" + String(httpResponseCode) + "). Verificar apiSecret/provisioning.");
+      Serial.printf("❌ Auth failed (%d) - check apiSecret\n", httpResponseCode);
       return false;
     }
 
     if (attempt < maxRetries) {
       int backoffMs = baseBackoffMs * (1 << (attempt - 1));
-      Serial.println("⏱️ Reintentando en " + String(backoffMs) + " ms...");
+      Serial.printf("⏳ Retry in %d ms\n", backoffMs);
       delay(backoffMs);
       if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("🔁 WiFi caido durante reintento. Reconectando...");
         WiFi.reconnect();
         delay(1000);
       }
     }
   }
 
-  Serial.println("❌ No se pudo enviar lectura tras todos los reintentos.");
+  Serial.println("❌ Failed after 3 attempts");
   return false;
 }
 
@@ -641,12 +604,8 @@ void setup() {
   Serial.begin(115200);
   delay(2000);
   
-  Serial.println("\n\n╔════════════════════════════════════════╗");
-  Serial.println("║  🔥 BIOSENSE IoT - INICIALIZACIÓN v2  ║");
-  Serial.println("║     Enhanced Security Firmware         ║");
-  Serial.println("╚════════════════════════════════════════╝\n");
+  Serial.println("\n\n🔥 BIOSENSE IoT v2 - Starting...\n");
   
-  Serial.println("⚙️ Configurando pines digitales de LEDs...");
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_ORANGE, OUTPUT);
   pinMode(LED_RED, OUTPUT);
@@ -655,28 +614,21 @@ void setup() {
   digitalWrite(LED_ORANGE, LOW);
   digitalWrite(LED_RED, LOW);
   
-  Serial.println("   ✅ Pines configurados:");
-  Serial.println("      GPIO 25 = LED Verde (Aire Sano)");
-  Serial.println("      GPIO 26 = LED Naranja (Moderado)");
-  Serial.println("      GPIO 27 = LED Rojo (Peligro)");
-  
-  Serial.println("\n⚙️ Configurando ADC...");
+  Serial.println("⚙️ ADC configured");
   analogSetAttenuation(ADC_11db);
   analogSetWidth(12);
-  Serial.println("   ✅ ADC configurado para 12 bits (0-4095 = 0-3.3V)");
   
   macAddress = WiFi.macAddress();
-  Serial.println("\n📍 MAC Address del dispositivo: " + macAddress);
+  Serial.println("📍 MAC: " + macAddress);
 
   preferences.begin("biosense", false);
   bootCounter = preferences.getUInt("boot_count", 0) + 1;
   preferences.putUInt("boot_count", bootCounter);
   preferences.end();
   bootNonce = esp_random();
-  Serial.println("🔐 Boot counter: " + String(bootCounter));
-  Serial.println("🔐 Boot nonce: 0x" + String(bootNonce, HEX));
+  Serial.printf("🔐 Boot: #%u | Nonce: 0x%X\n", bootCounter, bootNonce);
   
-  Serial.println("\n🔐 Cargando credenciales del almacenamiento NVS encriptado...");
+  Serial.println("📂 Loading NVS credentials...");
   preferences.begin("biosense", true);
   String savedSSID = preferences.getString("ssid", "");
   String savedPassword = preferences.getString("password", "");
@@ -687,30 +639,28 @@ void setup() {
   configuredPassword = savedPassword;
   
   if (savedSSID == "") {
-    Serial.println("❌ No hay WiFi guardado. Entrando en modo SINCRONIZACIÓN.\n");
+    Serial.println("❌ No WiFi saved - SYNC MODE\n");
     blockUntilProvisioned = true;
     initializeBLE();
     startupTime = millis() + STARTUP_WARMUP_TIME;
   } else {
-    Serial.println("✅ Credenciales encontradas.");
-    Serial.println("   SSID: " + savedSSID);
+    Serial.println("✅ WiFi credentials found: " + savedSSID);
 
     if (BLE_RECONFIG_ALWAYS_AVAILABLE) {
-      Serial.println("📡 BLE de reconfiguración habilitado (visible aunque haya WiFi guardada).");
+      Serial.println("📡 BLE reconfig enabled");
       initializeBLE();
     }
     
     bool wifiConnected = connectToWiFi(savedSSID, savedPassword);
     
     if (!wifiConnected) {
-      Serial.println("\n⚠️ WiFi falló en el primer intento.");
-      Serial.println("🔁 Se reintentará conexión automáticamente cada 10 segundos.");
+      Serial.println("⚠️ WiFi connect failed - will retry every 10s");
       lastWiFiRetryAttempt = millis();
     }
     startupTime = millis() + STARTUP_WARMUP_TIME;
   }
   
-  Serial.println("\n⏱️ Calentando sensores durante 30 segundos...");
+  Serial.println("⏳ Sensor warmup: 30 seconds");
 }
 
 // ================= LOOP PRINCIPAL =================
@@ -732,8 +682,9 @@ void loop() {
   
   if (millis() < startupTime) {
     unsigned long remainingTime = (startupTime - millis()) / 1000;
-    if (remainingTime % 5 == 0) {
-      Serial.print("⏳ " + String(remainingTime) + "s...");
+    // Log solo cada 10 segundos para no saturar la consola
+    if (remainingTime % 10 == 0 && remainingTime > 0) {
+      Serial.printf("⏳ Warmup... %lus\n", remainingTime);
     }
     delay(500);
     return;
@@ -745,14 +696,10 @@ void loop() {
   }
   lastReadTime = millis();
   
-  Serial.println("\n╔════════════════════════════════════════╗");
-  Serial.println("║      📊 LEYENDO SENSORES...           ║");
-  Serial.println("╚════════════════════════════════════════╝");
-  
   SensorSnapshot sensors = readSensors();
 
   if (!sensors.valid) {
-    Serial.println("   Verificar conexiones de pines analogicos.");
+    Serial.println("❌ Invalid reading - check sensor pins");
     return;
   }
 
@@ -762,14 +709,9 @@ void loop() {
   updateLEDAlert(riskLevel);
   
   String riskMessage = getRiskMessage(sensors.ch4, sensors.co, sensors.airQuality, riskLevel);
-  Serial.println("\n" + riskMessage);
-  
-  Serial.println("\n📊 Umbrales de Alerta (OMS):");
-  Serial.println("   CO (MQ7):         Normal < 9ppm | Alerta 9-30ppm | Peligro > 30ppm");
-  Serial.println("   CH4 (MQ4):        Normal < 500ppm | Alerta 500-1000ppm | Peligro > 1000ppm");
-  Serial.println("   CO2 (MQ135):      Normal < 1000ppm | Alerta 1000-2000ppm | Peligro > 2000ppm");
+  Serial.println(riskMessage);
   
   sendReading(sensors);
   
-  Serial.println("\n⏰ Proxima lectura en " + String(SENSOR_SEND_INTERVAL_MS / 1000) + " segundos...\n");
+  Serial.printf("⏰ Next: %lu sec\n\n", SENSOR_SEND_INTERVAL_MS / 1000);
 }

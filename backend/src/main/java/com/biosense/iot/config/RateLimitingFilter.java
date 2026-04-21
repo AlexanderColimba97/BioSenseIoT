@@ -110,7 +110,6 @@ public class RateLimitingFilter implements WebFilter {
      */
     private boolean isPublicEndpoint(String path) {
         return path.startsWith("/api/v2/auth/") ||
-                path.startsWith("/api/v2/sensors/reading") ||
                 path.startsWith("/health") ||
                 path.startsWith("/actuator");
     }

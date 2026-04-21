@@ -22,10 +22,10 @@ export default function AirQualityApp() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
   const [currentView, setCurrentView] = useState<ViewType>("dashboard")
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { data, isLoading, isError } = useSensorData()
+  const { data } = useSensorData()
 
   // Derive alert count from real diagnostic severity
-  const alertCount = (data.severity === 'HIGH' || data.severity === 'CRITICAL') ? 1 : 0
+  const alertCount = data && (data.severity === 'HIGH' || data.severity === 'CRITICAL') ? 1 : 0
 
   useEffect(() => {
     setMounted(true)

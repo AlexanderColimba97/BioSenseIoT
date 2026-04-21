@@ -7,17 +7,6 @@ import { AuthService } from '@/lib/auth-service'
 import { buildApiV2Url } from '@/lib/api-config'
 import { getUserDevices } from '@/lib/device-service'
 
-// Datos estáticos de respaldo específicos para tus sensores MQ
-const DEFAULT_DIAGNOSTIC: DiagnosticResponse = {
-  diagnosticText: "Sistema en espera. Conecte su ESP32 para ver datos en tiempo real.",
-  severity: "LOW",
-  recommendation: "Asegúrese de que los sensores MQ estén precalentados.",
-  timestamp: new Date().toISOString(),
-  mq4: 0.0,   // Metano/Gas Natural
-  mq7: 0.0,   // Monóxido de Carbono
-  mq135: 0.0  // Calidad de Aire General
-};
-
 const fetcher = async (url: string) => {
   const token = await AuthService.getValidToken();
 
@@ -40,7 +29,18 @@ const fetcher = async (url: string) => {
   }
 }
 
-export function useSensorData() {
+export interface UseSensorDataResult {
+  data: DiagnosticResponse | null
+  isLoading: boolean
+  isError: boolean
+  isFallback: boolean
+  isEmpty: boolean
+  error: Error | undefined
+  refresh: () => Promise<DiagnosticResponse | null | undefined>
+  isActivated: boolean
+}
+
+export function useSensorData(): UseSensorDataResult {
   const [isActivated, setIsActivated] = useState(false)
 
   useEffect(() => {
@@ -86,8 +86,8 @@ export function useSensorData() {
     }
   }, [])
   
-  // Cambia el refreshInterval basado en si está activado: 2-3 segundos si activado, 10 si no
-  const refreshInterval = isActivated ? 2500 : 10000
+  // Polling controlado para dashboard en tiempo real sin sobrecargar red/servidor.
+  const refreshInterval = isActivated ? 7000 : 10000
   
   const { data, error, isLoading, mutate } = useSWR<DiagnosticResponse | null>(
     '/api/v2/diagnostics/latest',
@@ -99,16 +99,17 @@ export function useSensorData() {
     }
   )
 
-  const safeData = data || DEFAULT_DIAGNOSTIC;
-  const isFallback = !data && !isLoading;
+  const isFallback = !data && !isLoading
+  const isEmpty = isActivated && !data && !isLoading && !error
 
   return {
-    data: safeData,
+    data: data ?? null,
     isLoading,
     isError: !!error,
     isFallback,
+    isEmpty,
     error,
-    refresh: mutate,
+    refresh: () => mutate(),
     isActivated
   }
 }

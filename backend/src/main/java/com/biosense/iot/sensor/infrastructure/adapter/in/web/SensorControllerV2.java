@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
+import java.util.Locale;
 import java.util.Map;
 
 @RestController
@@ -30,7 +31,7 @@ public class SensorControllerV2 {
             apiKey = authHeader.substring(7);
         }
 
-        String macAddress = request.getMacAddress();
+        String macAddress = normalizeMac(request.getMacAddress());
         if (macAddress == null || macAddress.isBlank()) {
             return Mono.just(ResponseEntity.badRequest().body((Object) Map.of("error", "Missing macAddress/deviceId")));
         }
@@ -68,5 +69,14 @@ public class SensorControllerV2 {
                     return Mono
                             .just(ResponseEntity.internalServerError().body((Object) Map.of("error", e.getMessage())));
                 });
+    }
+
+    private String normalizeMac(String mac) {
+        if (mac == null) {
+            return null;
+        }
+
+        String normalized = mac.trim().replace('-', ':').toUpperCase(Locale.ROOT);
+        return normalized.isBlank() ? null : normalized;
     }
 }
