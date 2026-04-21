@@ -39,6 +39,8 @@ export function ProfileView({ onNavigateToDashboard }: ProfileViewProps) {
     try {
       const data = await getUserDevices()
       setDevices(data)
+      localStorage.setItem('device_activated', data.length > 0 ? 'true' : 'false')
+      localStorage.setItem('device_status', data.length > 0 ? 'active' : 'inactive')
     } catch (error) {
       console.error('Error loading devices:', error)
     } finally {
@@ -60,6 +62,7 @@ export function ProfileView({ onNavigateToDashboard }: ProfileViewProps) {
     toast.success('Dispositivo vinculado correctamente')
     localStorage.setItem('device_activated', 'true')
     localStorage.setItem('device_status', 'active')
+    window.dispatchEvent(new Event('biosense-device-sync-success'))
     loadDevices()
   }
 

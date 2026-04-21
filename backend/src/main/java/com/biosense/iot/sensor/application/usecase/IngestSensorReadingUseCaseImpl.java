@@ -72,12 +72,13 @@ public class IngestSensorReadingUseCaseImpl implements IngestSensorReadingUseCas
     }
 
     private Mono<Void> generateAndSaveDiagnostic(Integer deviceId, SensorReadingDomain reading) {
-        return deviceRepositoryPort.getUserIdByDeviceId(deviceId)
+        return deviceRepositoryPort.getUserIdsByDeviceId(deviceId)
                 .flatMap(userId -> {
                     DiagnosticInfo info = buildDiagnosticInfo(reading);
                     return diagnosticRepositoryPort.save(userId, reading.getId(), info.severity, info.text,
                             info.recommendation);
                 })
+                .then()
                 .onErrorResume(e -> {
                     log.error("Error saving diagnostic for device {}: {}", deviceId, e.getMessage());
                     return Mono.empty();

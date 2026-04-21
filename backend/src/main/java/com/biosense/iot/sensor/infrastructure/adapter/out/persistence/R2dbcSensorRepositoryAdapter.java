@@ -17,7 +17,10 @@ public class R2dbcSensorRepositoryAdapter implements DeviceRepositoryPort, Senso
 
     @Override
     public Mono<Integer> getLinkedDeviceId(String macAddress) {
-        return databaseClient.sql("SELECT id FROM devices WHERE mac_address = :mac AND user_id IS NOT NULL")
+        return databaseClient.sql(
+                "SELECT d.id FROM devices d " +
+                        "WHERE d.mac_address = :mac " +
+                        "AND EXISTS (SELECT 1 FROM user_devices ud WHERE ud.device_id = d.id)")
                 .bind("mac", macAddress.toUpperCase())
                 .map(row -> row.get("id", Integer.class))
                 .first();
@@ -41,11 +44,11 @@ public class R2dbcSensorRepositoryAdapter implements DeviceRepositoryPort, Senso
     }
 
     @Override
-    public Mono<Integer> getUserIdByDeviceId(Integer deviceId) {
-        return databaseClient.sql("SELECT user_id FROM devices WHERE id = :deviceId")
+    public Flux<Integer> getUserIdsByDeviceId(Integer deviceId) {
+        return databaseClient.sql("SELECT user_id FROM user_devices WHERE device_id = :deviceId")
                 .bind("deviceId", deviceId)
                 .map(row -> row.get("user_id", Integer.class))
-                .first();
+                .all();
     }
 
     @Override

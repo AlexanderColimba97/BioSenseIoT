@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import useSWR from 'swr'
 import { DiagnosticResponse } from '@/lib/types'
 import { AuthService } from '@/lib/auth-service'
 import { buildApiV2Url } from '@/lib/api-config'
+import { getUserDevices } from '@/lib/device-service'
 
 // Datos estáticos de respaldo específicos para tus sensores MQ
 const DEFAULT_DIAGNOSTIC: DiagnosticResponse = {
@@ -40,13 +41,50 @@ const fetcher = async (url: string) => {
 }
 
 export function useSensorData() {
-  // Verificar si el dispositivo está activado
-  const [isActivated, setIsActivated] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('device_activated') === 'true'
+  const [isActivated, setIsActivated] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+
+    const refreshActivationState = async () => {
+      const localActivated = typeof window !== 'undefined' && localStorage.getItem('device_activated') === 'true'
+      if (localActivated) {
+        if (mounted) setIsActivated(true)
+        return
+      }
+
+      try {
+        const devices = await getUserDevices()
+        const active = devices.length > 0
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('device_activated', active ? 'true' : 'false')
+          localStorage.setItem('device_status', active ? 'active' : 'inactive')
+        }
+        if (mounted) setIsActivated(active)
+      } catch {
+        if (mounted) setIsActivated(localActivated)
+      }
     }
-    return false
-  })
+
+    refreshActivationState()
+
+    const onSyncSuccess = () => {
+      if (mounted) setIsActivated(true)
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('biosense-device-sync-success', onSyncSuccess)
+      window.addEventListener('focus', refreshActivationState)
+    }
+
+    return () => {
+      mounted = false
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('biosense-device-sync-success', onSyncSuccess)
+        window.removeEventListener('focus', refreshActivationState)
+      }
+    }
+  }, [])
   
   // Cambia el refreshInterval basado en si está activado: 2-3 segundos si activado, 10 si no
   const refreshInterval = isActivated ? 2500 : 10000

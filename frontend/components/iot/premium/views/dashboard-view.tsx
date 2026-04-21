@@ -32,7 +32,7 @@ function formatTime(timestamp?: string): string {
 export function DashboardView({ 
   onNavigateToProfile 
 }: DashboardViewProps) {
-  const { data, isLoading, isError, isActivated } = useSensorData()
+  const { data, isLoading, isError, isActivated, isFallback } = useSensorData()
   
   if (isLoading) return <DashboardSkeleton />;
   
@@ -85,6 +85,7 @@ export function DashboardView({
   }
 
   const nivel = data.severity || 'LOW';
+  const hasLiveData = !isFallback && !!data?.timestamp;
   const severityMap: Record<string, 'NORMAL' | 'PRECAUCION' | 'PELIGRO'> = {
     'LOW': 'NORMAL',
     'MEDIUM': 'PRECAUCION',
@@ -102,11 +103,15 @@ export function DashboardView({
         nivel === 'HIGH' && 'bg-orange-50 text-orange-900',
         nivel === 'CRITICAL' && 'bg-red-50 text-red-900'
       )}>
+        <div className="absolute -top-20 -right-16 h-48 w-48 rounded-full bg-white/30 blur-2xl" />
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-widest opacity-60">Diagnóstico IA</span>
             <StatusBadge level={severityMap[nivel] || 'NORMAL'} />
           </div>
+          <p className="text-xs font-semibold opacity-70">
+            {hasLiveData ? 'Conectado en tiempo real' : 'Esperando primera lectura válida'}
+          </p>
           <CardTitle className="text-2xl font-black tracking-tight leading-tight">
             {data.diagnosticText || "Analizando calidad del aire..."}
           </CardTitle>
@@ -124,6 +129,30 @@ export function DashboardView({
           </div>
         </CardContent>
       </Card>
+
+      <div className="grid grid-cols-3 gap-2">
+        <Card className="rounded-2xl border border-emerald-100 bg-emerald-50/70">
+          <CardContent className="p-3">
+            <p className="text-[10px] uppercase tracking-wide text-emerald-700 font-bold">MQ4</p>
+            <p className="text-lg font-extrabold text-emerald-900">{data.mq4.toFixed(1)}</p>
+            <p className="text-[10px] text-emerald-700">ppm</p>
+          </CardContent>
+        </Card>
+        <Card className="rounded-2xl border border-sky-100 bg-sky-50/70">
+          <CardContent className="p-3">
+            <p className="text-[10px] uppercase tracking-wide text-sky-700 font-bold">MQ7</p>
+            <p className="text-lg font-extrabold text-sky-900">{data.mq7.toFixed(1)}</p>
+            <p className="text-[10px] text-sky-700">ppm</p>
+          </CardContent>
+        </Card>
+        <Card className="rounded-2xl border border-violet-100 bg-violet-50/70">
+          <CardContent className="p-3">
+            <p className="text-[10px] uppercase tracking-wide text-violet-700 font-bold">MQ135</p>
+            <p className="text-lg font-extrabold text-violet-900">{data.mq135.toFixed(1)}</p>
+            <p className="text-[10px] text-violet-700">ppm</p>
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="grid grid-cols-1 gap-3">
         <Card className="border-none bg-slate-900 text-white rounded-3xl p-1 shadow-lg">

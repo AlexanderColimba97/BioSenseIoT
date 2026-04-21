@@ -218,6 +218,17 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
       if (!BleClient) {
         throw new Error('Bluetooth no disponible');
       }
+
+      const ensureConnected = async () => {
+        try {
+          await BleClient.connect(selectedDevice.deviceId);
+        } catch (connectError) {
+          const msg = connectError instanceof Error ? connectError.message.toLowerCase() : '';
+          if (!msg.includes('already')) {
+            throw connectError;
+          }
+        }
+      };
       
       // 1. Vincular en backend y obtener apiSecret
       toast.info('Vinculando dispositivo en servidor...');
@@ -243,25 +254,38 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
       
       // 2. Enviar credenciales via BLE con timeout
       toast.info('Enviando configuración WiFi al ESP32...');
+      await ensureConnected();
       
       const payload = `${wifiSsid},${wifiPassword},${device.apiSecret}`;
       const data = new TextEncoder().encode(payload);
       const dataView = new DataView(data.buffer);
-      
-      const writePromise = BleClient.write(
-        selectedDevice.deviceId,
-        SERVICE_UUID,
-        CHARACTERISTIC_UUID,
-        dataView
-      );
-      
-      const writeTimeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Write timeout - dispositivo no responde')), 20000)
-      );
-      
-      await Promise.race([writePromise, writeTimeoutPromise]);
+
+      const writeWithTimeout = async () => {
+        const writePromise = BleClient.write(
+          selectedDevice.deviceId,
+          SERVICE_UUID,
+          CHARACTERISTIC_UUID,
+          dataView
+        );
+
+        const writeTimeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Write timeout - dispositivo no responde')), 20000)
+        );
+
+        await Promise.race([writePromise, writeTimeoutPromise]);
+      };
+
+      try {
+        await writeWithTimeout();
+      } catch (firstWriteError) {
+        await ensureConnected();
+        await writeWithTimeout();
+      }
       
       toast.success('✅ Sincronización exitosa!\nEl ESP32 se reiniciará en 2 segundos');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('biosense-device-sync-success'));
+      }
       
       // Desconectar después del éxito
       setTimeout(() => {
@@ -277,7 +301,7 @@ export default function SyncDeviceModal({ onClose, onSuccess }: SyncDeviceModalP
     } catch (error) {
       console.error('Sync error:', error);
       const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
-      toast.error('Sincronización fallida: ' + errorMsg);
+      toast.error('Sincronización BLE fallida: ' + errorMsg + '. El dispositivo quedó vinculado en servidor; reintenta envío WiFi.');
     } finally {
       setLoading(false);
     }

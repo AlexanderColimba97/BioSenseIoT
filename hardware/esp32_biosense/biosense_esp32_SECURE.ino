@@ -81,7 +81,7 @@ const float RL_MQ135 = 20.0;
 const float R0_MQ135 = 10.0;    
 
 // ================= TIEMPO DE LECTURA =================
-const unsigned long SENSOR_READ_INTERVAL = 10000;  // 10 segundos
+const unsigned long SENSOR_SEND_INTERVAL_MS = 10000;  // configurable: 10-30s
 const unsigned long STARTUP_WARMUP_TIME = 30000;   // 30 segundos
 unsigned long lastReadTime = 0;
 unsigned long startupTime = 0;
@@ -94,6 +94,16 @@ enum RiskLevel {
 };
 
 RiskLevel currentRiskLevel = SAFE;
+
+struct SensorSnapshot {
+  int rawMq4;
+  int rawMq7;
+  int rawMq135;
+  float ch4;
+  float co;
+  float airQuality;
+  bool valid;
+};
 
 // ================= SECURITY FUNCTIONS =================
 
@@ -204,6 +214,60 @@ float calculatePPM(int adcValue, float RL, float R0, float a, float b) {
   float ppm = (ratio > 0) ? a * pow(ratio, b) : 0;
   
   return (ppm < 0) ? 0 : ppm;
+}
+
+float readMQ7() {
+  int raw = analogRead(MQ7_PIN);
+  float ppm = calculatePPM(raw, RL_MQ7, R0_MQ7, 99.0, -1.5);
+  if (isnan(ppm) || isinf(ppm) || ppm < 0) return 0.0;
+  return ppm;
+}
+
+float readMQ4() {
+  int raw = analogRead(MQ4_PIN);
+  float ppm = calculatePPM(raw, RL_MQ4, R0_MQ4, 1012.7, -2.78);
+  if (isnan(ppm) || isinf(ppm) || ppm < 0) return 0.0;
+  return ppm;
+}
+
+float readMQ135() {
+  int raw = analogRead(MQ135_PIN);
+  float ppm = calculatePPM(raw, RL_MQ135, R0_MQ135, 110.5, -2.8);
+  if (isnan(ppm) || isinf(ppm) || ppm < 0) return 0.0;
+  return ppm;
+}
+
+SensorSnapshot readSensors() {
+  SensorSnapshot snapshot;
+  snapshot.rawMq4 = analogRead(MQ4_PIN);
+  snapshot.rawMq7 = analogRead(MQ7_PIN);
+  snapshot.rawMq135 = analogRead(MQ135_PIN);
+
+  snapshot.ch4 = calculatePPM(snapshot.rawMq4, RL_MQ4, R0_MQ4, 1012.7, -2.78);
+  snapshot.co = calculatePPM(snapshot.rawMq7, RL_MQ7, R0_MQ7, 99.0, -1.5);
+  snapshot.airQuality = calculatePPM(snapshot.rawMq135, RL_MQ135, R0_MQ135, 110.5, -2.8);
+
+  if (isnan(snapshot.ch4) || isinf(snapshot.ch4) || snapshot.ch4 < 0) snapshot.ch4 = 0.0;
+  if (isnan(snapshot.co) || isinf(snapshot.co) || snapshot.co < 0) snapshot.co = 0.0;
+  if (isnan(snapshot.airQuality) || isinf(snapshot.airQuality) || snapshot.airQuality < 0) snapshot.airQuality = 0.0;
+
+  snapshot.valid = !(snapshot.rawMq4 == 0 && snapshot.rawMq7 == 0 && snapshot.rawMq135 == 0);
+
+  Serial.println("Valores ADC crudos:");
+  Serial.println("   MQ4:   " + String(snapshot.rawMq4) + "/4095");
+  Serial.println("   MQ7:   " + String(snapshot.rawMq7) + "/4095");
+  Serial.println("   MQ135: " + String(snapshot.rawMq135) + "/4095");
+
+  Serial.println("\nValores normalizados (PPM):");
+  Serial.printf("   CH4 (MQ4): %.2f ppm\n", snapshot.ch4);
+  Serial.printf("   CO  (MQ7): %.2f ppm\n", snapshot.co);
+  Serial.printf("   Air (MQ135): %.2f ppm\n", snapshot.airQuality);
+
+  if (!snapshot.valid) {
+    Serial.println("\n⚠️ ADVERTENCIA: Lectura invalida (todos los sensores en 0)");
+  }
+
+  return snapshot;
 }
 
 // ================= FUNCIÓN: Evaluar Nivel de Riesgo =================
@@ -461,96 +525,115 @@ bool connectToWiFi(String ssid, String password) {
 }
 
 // ================= FUNCIÓN: Enviar Datos al Backend (SEGURO) =================
-void sendSensorDataToBackend(float ppm_mq4, float ppm_mq7, float ppm_mq135) {
+bool sendReading(const SensorSnapshot& sensorData) {
+  const int maxRetries = 3;
+  const int baseBackoffMs = 1000;
+
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("❌ WiFi desconectado. No se puede enviar datos.");
+    Serial.println("❌ WiFi desconectado. Intentando reconexion...");
     if (WiFi.reconnect()) {
-      delay(2000);
+      delay(1500);
     }
-    return;
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("❌ Reconexion WiFi fallida. Se reintentara en el siguiente ciclo.");
+      return false;
+    }
   }
   
   if (apiSecret.length() == 0) {
-    Serial.println("⚠️ API Secret no configurado. Saltando envío.");
-    return;
+    Serial.println("⚠️ API Secret no configurado. Saltando envio.");
+    return false;
   }
   
-  Serial.println("\n📤 Enviando datos al backend (SEGURO)...");
+  Serial.println("\n📤 Enviando lectura al backend...");
   
-  // Generar ID único de lectura
   String readingId = generateReadingId();
-  
-  // Verificar si es duplicada
+
   if (isDuplicateReading(readingId)) {
-    Serial.println("⚠️ Lectura duplicada detectada. Saltando envío.");
-    return;
+    Serial.println("⚠️ Lectura duplicada detectada (buffer local). Saltando envio.");
+    return false;
   }
-  
-  // Agregar al buffer
-  addToBuffer(readingId, ppm_mq4, ppm_mq7, ppm_mq135);
-  
-  // ✅ AHORA USAR BEARER TOKEN (en lugar de X-BioSense-Key)
+
   String authHeader = "Bearer " + apiSecret;
-  
-  WiFiClientSecure client;
-  HTTPClient http;
-  
-  // Configurar cliente seguro (sin validación de cert por ahora)
-  client.setInsecure();
-  
   String url = "https://" + String(BACKEND_HOST) + "/api/v2/sensors/reading";
-  
-  if (!http.begin(client, url)) {
-    Serial.println("❌ Error iniciando conexión HTTPS");
-    return;
-  }
-  
-  // Usar Bearer Token (JWT) en lugar de X-BioSense-Key
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("Authorization", authHeader);  // ✅ CAMBIO CRÍTICO
-  http.setConnectTimeout(5000);
-  http.setTimeout(10000);
-  
-   // Construir JSON manualmente (SIN ArduinoJson - ahorra ~300KB!)
-   String ts = String(time(nullptr));
-   String mq4Str = String(round(ppm_mq4 * 100.0) / 100.0, 2);
-   String mq7Str = String(round(ppm_mq7 * 100.0) / 100.0, 2);
-   String mq135Str = String(round(ppm_mq135 * 100.0) / 100.0, 2);
-   
-   String jsonPayload = "{\"macAddress\":\"" + macAddress + "\",\"deviceId\":\"" + macAddress + "\",\"mq4\":" + mq4Str + ",\"mq7\":" + mq7Str + ",\"mq135\":" + mq135Str + ",\"readingId\":\"" + readingId + "\",\"timestamp\":" + ts + "}";
-   
-   Serial.println("   Payload (sin ArduinoJson): OK");
-  
-  int httpResponseCode = http.POST(jsonPayload);
-  
-  Serial.print("   Respuesta HTTP: ");
-  Serial.println(httpResponseCode);
-  
-  if (httpResponseCode == 200 || httpResponseCode == 201) {
-    Serial.println("✅ Datos guardados correctamente en la BD!");
-  } else if (httpResponseCode == 409) {
-    Serial.println("⚠️ Error 409: Lectura duplicada (ya existe en BD)");
-    Serial.println("   Esto es NORMAL - la deduplicación funciona correctamente");
-  } else if (httpResponseCode == 401) {
-    Serial.println("🚫 Error 401: Token inválido o expirado");
-    Serial.println("   Se intentará reactivar el dispositivo en el siguiente ciclo");
-  } else if (httpResponseCode == 403) {
-    Serial.println("🚫 Error 403: Dispositivo no vinculado");
-    Serial.println("   SOLUCIÓN: Sincroniza de nuevo en la App");
-  } else if (httpResponseCode == 429) {
-    Serial.println("⏱️ Error 429: Rate limit excedido - esperando...");
-    delay(5000);
-  } else if (httpResponseCode == -1) {
-    Serial.println("❌ Error de conexión: No se puede alcanzar el servidor");
-  } else {
-    Serial.println("⚠️ Error: " + String(httpResponseCode));
-    String response = http.getString();
-    if (response.length() > 0) {
-      Serial.println("   Respuesta: " + response.substring(0, 150));
+
+  String ts = String(time(nullptr));
+  String coStr = String(round(sensorData.co * 100.0) / 100.0, 2);
+  String ch4Str = String(round(sensorData.ch4 * 100.0) / 100.0, 2);
+  String airStr = String(round(sensorData.airQuality * 100.0) / 100.0, 2);
+  String jsonPayload = "{"
+      "\"deviceId\":\"" + macAddress + "\","  
+      "\"macAddress\":\"" + macAddress + "\"," 
+      "\"co\":" + coStr + ","
+      "\"ch4\":" + ch4Str + ","
+      "\"airQuality\":" + airStr + ","
+      "\"mq7\":" + coStr + ","
+      "\"mq4\":" + ch4Str + ","
+      "\"mq135\":" + airStr + ","
+      "\"readingId\":\"" + readingId + "\"," 
+      "\"timestamp\":" + ts +
+      "}";
+
+  for (int attempt = 1; attempt <= maxRetries; attempt++) {
+    WiFiClientSecure client;
+    HTTPClient http;
+    client.setInsecure();
+
+    if (!http.begin(client, url)) {
+      Serial.println("❌ Error iniciando conexion HTTPS");
+      return false;
+    }
+
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", authHeader);
+    http.setConnectTimeout(6000);
+    http.setTimeout(12000);
+
+    Serial.println("   Intento " + String(attempt) + "/" + String(maxRetries));
+    Serial.println("   Payload: " + jsonPayload);
+
+    int httpResponseCode = http.POST(jsonPayload);
+    String responseBody = http.getString();
+
+    Serial.print("   HTTP Response: ");
+    Serial.println(httpResponseCode);
+    if (responseBody.length() > 0) {
+      Serial.println("   Body: " + responseBody.substring(0, 180));
+    }
+
+    http.end();
+
+    if (httpResponseCode == 200 || httpResponseCode == 201) {
+      addToBuffer(readingId, sensorData.ch4, sensorData.co, sensorData.airQuality);
+      Serial.println("✅ Lectura persistida correctamente.");
+      return true;
+    }
+
+    if (httpResponseCode == 409) {
+      addToBuffer(readingId, sensorData.ch4, sensorData.co, sensorData.airQuality);
+      Serial.println("⚠️ Lectura duplicada detectada por backend (409). Se considera exitosa.");
+      return true;
+    }
+
+    if (httpResponseCode == 401 || httpResponseCode == 403) {
+      Serial.println("🚫 Authorization fallida (" + String(httpResponseCode) + "). Verificar apiSecret/provisioning.");
+      return false;
+    }
+
+    if (attempt < maxRetries) {
+      int backoffMs = baseBackoffMs * (1 << (attempt - 1));
+      Serial.println("⏱️ Reintentando en " + String(backoffMs) + " ms...");
+      delay(backoffMs);
+      if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("🔁 WiFi caido durante reintento. Reconectando...");
+        WiFi.reconnect();
+        delay(1000);
+      }
     }
   }
-  
-  http.end();
+
+  Serial.println("❌ No se pudo enviar lectura tras todos los reintentos.");
+  return false;
 }
 
 // ================= SETUP =================
@@ -656,7 +739,7 @@ void loop() {
     return;
   }
   
-  if (millis() - lastReadTime < SENSOR_READ_INTERVAL) {
+  if (millis() - lastReadTime < SENSOR_SEND_INTERVAL_MS) {
     delay(100);
     return;
   }
@@ -666,36 +749,19 @@ void loop() {
   Serial.println("║      📊 LEYENDO SENSORES...           ║");
   Serial.println("╚════════════════════════════════════════╝");
   
-  int rawADC_MQ4 = analogRead(MQ4_PIN);
-  int rawADC_MQ7 = analogRead(MQ7_PIN);
-  int rawADC_MQ135 = analogRead(MQ135_PIN);
-  
-  Serial.println("Valores ADC crudos:");
-  Serial.println("   MQ4:   " + String(rawADC_MQ4) + "/4095");
-  Serial.println("   MQ7:   " + String(rawADC_MQ7) + "/4095");
-  Serial.println("   MQ135: " + String(rawADC_MQ135) + "/4095");
-  
-  if (rawADC_MQ4 == 0 && rawADC_MQ7 == 0 && rawADC_MQ135 == 0) {
-    Serial.println("\n⚠️ ADVERTENCIA: Todos los sensores leen 0!");
-    Serial.println("   Verificar conexiones de pines analógicos.");
+  SensorSnapshot sensors = readSensors();
+
+  if (!sensors.valid) {
+    Serial.println("   Verificar conexiones de pines analogicos.");
     return;
   }
-  
-  float ppm_mq4 = calculatePPM(rawADC_MQ4, RL_MQ4, R0_MQ4, 1012.7, -2.78);
-  float ppm_mq7 = calculatePPM(rawADC_MQ7, RL_MQ7, R0_MQ7, 99.0, -1.5);
-  float ppm_mq135 = calculatePPM(rawADC_MQ135, RL_MQ135, R0_MQ135, 110.5, -2.8);
-  
-  Serial.println("\nValores en PPM:");
-  Serial.printf("   MQ4   (CH4)       : %.2f PPM\n", ppm_mq4);
-  Serial.printf("   MQ7   (CO)        : %.2f PPM\n", ppm_mq7);
-  Serial.printf("   MQ135 (CO2 eq)    : %.2f PPM\n", ppm_mq135);
-  
-  RiskLevel riskLevel = evaluateRiskLevel(ppm_mq4, ppm_mq7, ppm_mq135);
+
+  RiskLevel riskLevel = evaluateRiskLevel(sensors.ch4, sensors.co, sensors.airQuality);
   currentRiskLevel = riskLevel;
   
   updateLEDAlert(riskLevel);
   
-  String riskMessage = getRiskMessage(ppm_mq4, ppm_mq7, ppm_mq135, riskLevel);
+  String riskMessage = getRiskMessage(sensors.ch4, sensors.co, sensors.airQuality, riskLevel);
   Serial.println("\n" + riskMessage);
   
   Serial.println("\n📊 Umbrales de Alerta (OMS):");
@@ -703,7 +769,7 @@ void loop() {
   Serial.println("   CH4 (MQ4):        Normal < 500ppm | Alerta 500-1000ppm | Peligro > 1000ppm");
   Serial.println("   CO2 (MQ135):      Normal < 1000ppm | Alerta 1000-2000ppm | Peligro > 2000ppm");
   
-  sendSensorDataToBackend(ppm_mq4, ppm_mq7, ppm_mq135);
+  sendReading(sensors);
   
-  Serial.println("\n⏰ Próxima lectura en 10 segundos...\n");
+  Serial.println("\n⏰ Proxima lectura en " + String(SENSOR_SEND_INTERVAL_MS / 1000) + " segundos...\n");
 }
