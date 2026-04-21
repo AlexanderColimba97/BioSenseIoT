@@ -62,6 +62,12 @@ const char* NTP_SERVER_PRIMARY = "pool.ntp.org";
 const char* NTP_SERVER_SECONDARY = "time.nist.gov";
 const unsigned long NTP_SYNC_TIMEOUT_MS = 8000;
 const unsigned long MIN_VALID_EPOCH = 1700000000UL;
+const int ADC_MIN_VALID = 15;
+const int ADC_MAX_VALID = 4080;
+const int ADC_SAMPLES = 5;
+const float MQ4_MAX_PPM = 10000.0;
+const float MQ7_MAX_PPM = 1000.0;
+const float MQ135_MAX_PPM = 10000.0;
 unsigned long lastWiFiRetryAttempt = 0;
 bool clockSynced = false;
 
@@ -200,25 +206,49 @@ bool validateJWTToken(const String& token) {
 }
 
 // ================= FUNCIÓN: Convertir ADC a PPM =================
-float calculatePPM(int adcValue, float RL, float R0, float a, float b) {
-  if (adcValue <= 0) {
+int readAdcAverage(int pin, int samples = ADC_SAMPLES) {
+  long sum = 0;
+  for (int i = 0; i < samples; i++) {
+    sum += analogRead(pin);
+    delay(5);
+  }
+  return (int)(sum / samples);
+}
+
+float clampPpm(float ppm, float maxPpm) {
+  if (isnan(ppm) || isinf(ppm) || ppm < 0) {
     return 0.0;
   }
-  
-  float voltage = (adcValue / 4095.0) * 3.3;
-  
-  if (voltage >= 3.3) {
-    voltage = 3.29;
+  if (ppm > maxPpm) {
+    return maxPpm;
   }
-  
+  return ppm;
+}
+
+float calculatePPM(int adcValue, float RL, float R0, float a, float b) {
+  if (adcValue < ADC_MIN_VALID || adcValue > ADC_MAX_VALID || R0 <= 0.0 || RL <= 0.0) {
+    return 0.0;
+  }
+
+  float voltage = (adcValue / 4095.0) * 3.3;
+  if (voltage <= 0.05 || voltage >= 3.25) {
+    return 0.0;
+  }
+
   float Rs = ((3.3 * RL) / voltage) - RL;
-  
-  if (Rs < 0) Rs = 0;
-  
-  float ratio = (R0 > 0) ? Rs / R0 : 0;
-  float ppm = (ratio > 0) ? a * pow(ratio, b) : 0;
-  
-  return (ppm < 0) ? 0 : ppm;
+  if (Rs <= 0.0) {
+    return 0.0;
+  }
+
+  float ratio = Rs / R0;
+  if (ratio < 0.05) ratio = 0.05;
+  if (ratio > 20.0) ratio = 20.0;
+
+  float ppm = a * pow(ratio, b);
+  if (isnan(ppm) || isinf(ppm) || ppm < 0.0) {
+    return 0.0;
+  }
+  return ppm;
 }
 
 float readMQ7() {
@@ -244,17 +274,17 @@ float readMQ135() {
 
 SensorSnapshot readSensors() {
   SensorSnapshot snapshot;
-  snapshot.rawMq4 = analogRead(MQ4_PIN);
-  snapshot.rawMq7 = analogRead(MQ7_PIN);
-  snapshot.rawMq135 = analogRead(MQ135_PIN);
+  snapshot.rawMq4 = readAdcAverage(MQ4_PIN);
+  snapshot.rawMq7 = readAdcAverage(MQ7_PIN);
+  snapshot.rawMq135 = readAdcAverage(MQ135_PIN);
 
   snapshot.ch4 = calculatePPM(snapshot.rawMq4, RL_MQ4, R0_MQ4, 1012.7, -2.78);
   snapshot.co = calculatePPM(snapshot.rawMq7, RL_MQ7, R0_MQ7, 99.0, -1.5);
   snapshot.airQuality = calculatePPM(snapshot.rawMq135, RL_MQ135, R0_MQ135, 110.5, -2.8);
 
-  if (isnan(snapshot.ch4) || isinf(snapshot.ch4) || snapshot.ch4 < 0) snapshot.ch4 = 0.0;
-  if (isnan(snapshot.co) || isinf(snapshot.co) || snapshot.co < 0) snapshot.co = 0.0;
-  if (isnan(snapshot.airQuality) || isinf(snapshot.airQuality) || snapshot.airQuality < 0) snapshot.airQuality = 0.0;
+  snapshot.ch4 = clampPpm(snapshot.ch4, MQ4_MAX_PPM);
+  snapshot.co = clampPpm(snapshot.co, MQ7_MAX_PPM);
+  snapshot.airQuality = clampPpm(snapshot.airQuality, MQ135_MAX_PPM);
 
   snapshot.valid = !(snapshot.rawMq4 == 0 && snapshot.rawMq7 == 0 && snapshot.rawMq135 == 0);
 
@@ -601,6 +631,9 @@ bool sendReading(const SensorSnapshot& sensorData) {
     String responseBody = http.getString();
 
     Serial.printf("📤 POST #%d: %d\n", attempt, httpResponseCode);
+    if (httpResponseCode < 0) {
+      Serial.println("❌ HTTP error: " + http.errorToString(httpResponseCode));
+    }
     if (responseBody.length() > 0) {
       int maxLogLen = responseBody.length() > 200 ? 200 : responseBody.length();
       Serial.println("↩️ " + responseBody.substring(0, maxLogLen));
@@ -628,6 +661,11 @@ bool sendReading(const SensorSnapshot& sensorData) {
     if (attempt < maxRetries) {
       int backoffMs = baseBackoffMs * (1 << (attempt - 1));
       Serial.printf("⏳ Retry in %d ms\n", backoffMs);
+      if (httpResponseCode < 0) {
+        WiFi.disconnect(false);
+        delay(300);
+        WiFi.reconnect();
+      }
       delay(backoffMs);
       if (WiFi.status() != WL_CONNECTED) {
         WiFi.reconnect();

@@ -2,6 +2,7 @@ package com.biosense.iot.exception;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -21,6 +22,14 @@ public class GlobalExceptionHandler {
         return Mono.just(ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
                 .body(Map.of("error", ex.getMessage())));
+    }
+
+    @ExceptionHandler(DataAccessResourceFailureException.class)
+    public Mono<ResponseEntity<Map<String, String>>> handleDatabaseUnavailable(DataAccessResourceFailureException ex) {
+        log.error("Base de datos temporalmente no disponible: {}", ex.getMessage());
+        return Mono.just(ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("error", "Servicio de base de datos temporalmente no disponible. Reintente.")));
     }
 
     @ExceptionHandler(Exception.class)
