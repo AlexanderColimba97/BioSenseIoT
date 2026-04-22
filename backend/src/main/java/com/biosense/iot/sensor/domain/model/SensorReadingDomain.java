@@ -65,4 +65,8 @@ public class SensorReadingDomain {
     public Instant getTimestamp() {
         return timestamp;
     }
+
+    public void setTimestamp(Instant timestamp) {
+        this.timestamp = timestamp;
+    }
 }

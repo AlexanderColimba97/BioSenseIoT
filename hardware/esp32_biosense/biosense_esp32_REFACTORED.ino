@@ -18,6 +18,7 @@
 #include <math.h>
 #include <time.h>
 #include <esp_system.h>
+#include <esp_mac.h>
 
 // ================= PIN CONFIGURATION =================
 #define MQ4_PIN   35    // GPIO 35 (ADC1_CH7)
@@ -27,6 +28,7 @@
 #define LED_GREEN  25   // GPIO 25 - LED Verde (Aire Sano)
 #define LED_ORANGE 26   // GPIO 26 - LED Naranja (Moderado/Espera)
 #define LED_RED    27   // GPIO 27 - LED Rojo (Peligro)
+#define BOOT_BUTTON_PIN 0 // GPIO0 - botón BOOT para forzar re-vinculación
 
 // ================= BLE CONFIG =================
 #define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -60,11 +62,15 @@ unsigned long lastReadTime = 0;
 unsigned long lastBlinkTime = 0;
 unsigned long stateChangeTime = 0;
 unsigned long wifiRetryTime = 0;
+unsigned long wifiConnectStartTime = 0;
 
 // State flags
 bool bleInitialized = false;
 bool wifiConnected = false;
+bool wifiConnecting = false;
 bool ledBlinkState = false;
+unsigned int wifiTimeoutCount = 0;
+unsigned int unlinkedDeviceCount = 0;
 
 // Constants
 const unsigned long SENSOR_READ_INTERVAL = 10000;      // 10 seconds
@@ -74,14 +80,22 @@ const unsigned long WIFI_RETRY_INTERVAL = 15000;       // 15 seconds
 const unsigned long WIFI_CONNECT_TIMEOUT = 20000;      // 20 seconds
 const unsigned long NTP_SYNC_TIMEOUT_MS = 8000;
 const unsigned long MIN_VALID_EPOCH = 1700000000UL;
+const unsigned int WIFI_MAX_TIMEOUTS_BEFORE_BLE_RECOVERY = 4;
+const unsigned int UNLINKED_DEVICE_MAX_RETRIES_BEFORE_RECOVERY = 3;
+const unsigned long MANUAL_RELINK_HOLD_MS = 5000;
+
+unsigned long bootButtonPressedAt = 0;
+bool bootButtonHandled = false;
 
 // ================= SENSOR CALIBRATION =================
+// NOTA: R0 debe calibrarse en aire limpio midiendo Rs en reposo.
+// Estos son valores de partida para pruebas en interior.
 const float RL_MQ4   = 20.0;
-const float R0_MQ4   = 10.0;
+const float R0_MQ4   = 4.4;   // Ajustado para gas metano (encendedor)
 const float RL_MQ7   = 10.0;
 const float R0_MQ7   = 10.0;
 const float RL_MQ135 = 20.0;
-const float R0_MQ135 = 10.0;
+const float R0_MQ135 = 3.6;   // Ajustado para humo y alcoholes
 
 // ================= SENSOR READINGS BUFFER =================
 struct SensorReading {
@@ -112,6 +126,26 @@ struct SensorSnapshot {
   bool valid;
 };
 
+/**
+ * Obtiene la MAC real de hardware (eFuse) para evitar 00:00:00:00:00:00
+ * cuando WiFi aún no está inicializado.
+ */
+String getHardwareMacAddress() {
+  uint8_t mac[6] = {0};
+  if (esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK) {
+    return String("00:00:00:00:00:00");
+  }
+
+  char macStr[18];
+  snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  return String(macStr);
+}
+
+bool isZeroMac(const String& mac) {
+  return mac == "00:00:00:00:00:00";
+}
+
 // ================= BLE CALLBACKS =================
 class BLECallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
@@ -131,6 +165,31 @@ class BLECallbacks : public BLECharacteristicCallbacks {
     payload.trim();
     
     Serial.println("\n📥 BLE DATA RECEIVED: " + payload);
+
+    if (payload.equalsIgnoreCase("RESET_WIFI")) {
+      Serial.println("🧹 RESET_WIFI command received. Clearing binding and rebooting...");
+
+      preferences.begin("biosense", false);
+      preferences.remove("ssid");
+      preferences.remove("password");
+      preferences.remove("api_secret");
+      preferences.remove("bound_at");
+      preferences.end();
+
+      wifiConnected = false;
+      wifiConnecting = false;
+      configuredSsid = "";
+      configuredPassword = "";
+      apiSecret = "";
+
+      digitalWrite(LED_GREEN, LOW);
+      digitalWrite(LED_ORANGE, LOW);
+      digitalWrite(LED_RED, LOW);
+
+      delay(500);
+      ESP.restart();
+      return;
+    }
     
     // Parse: SSID,PASSWORD,API_SECRET
     int firstComma = payload.indexOf(',');
@@ -168,6 +227,64 @@ class BLECallbacks : public BLECharacteristicCallbacks {
     ESP.restart();
   }
 };
+
+/**
+ * Permite forzar modo de re-vinculación manteniendo BOOT por 5s.
+ * Útil cuando el dispositivo está en modo operacional (BLE apagado)
+ * y se necesita asociarlo a otra cuenta.
+ */
+void checkManualRelinkRequest() {
+  bool pressed = (digitalRead(BOOT_BUTTON_PIN) == LOW);
+
+  if (!pressed) {
+    bootButtonPressedAt = 0;
+    bootButtonHandled = false;
+    return;
+  }
+
+  if (bootButtonPressedAt == 0) {
+    bootButtonPressedAt = millis();
+    return;
+  }
+
+  if (bootButtonHandled || (millis() - bootButtonPressedAt < MANUAL_RELINK_HOLD_MS)) {
+    return;
+  }
+
+  bootButtonHandled = true;
+  Serial.println("\n🧹 BOOT long-press detected. Entering re-link mode...");
+
+  preferences.begin("biosense", false);
+  preferences.remove("ssid");
+  preferences.remove("password");
+  preferences.remove("api_secret");
+  preferences.remove("bound_at");
+  preferences.end();
+
+  configuredSsid = "";
+  configuredPassword = "";
+  apiSecret = "";
+  wifiConnected = false;
+  wifiConnecting = false;
+  wifiTimeoutCount = 0;
+  unlinkedDeviceCount = 0;
+
+  WiFi.disconnect(true, false);
+  WiFi.mode(WIFI_OFF);
+
+  currentState = STATUS_UNCONFIGURED;
+  stateChangeTime = millis();
+
+  digitalWrite(LED_GREEN, LOW);
+  digitalWrite(LED_RED, LOW);
+  digitalWrite(LED_ORANGE, LOW);
+
+  if (!bleInitialized) {
+    initializeBLE();
+  }
+
+  Serial.println("✅ Re-link mode active. BLE visible for new account binding.\n");
+}
 
 // ================= HELPER FUNCTIONS =================
 
@@ -275,20 +392,24 @@ float clampPpm(float ppm, float maxPpm) {
  */
 SensorSnapshot readSensors() {
   SensorSnapshot snapshot;
-  snapshot.rawMq4 = readAdcAverage(MQ4_PIN);
-  snapshot.rawMq7 = readAdcAverage(MQ7_PIN);
+  snapshot.rawMq4   = readAdcAverage(MQ4_PIN);
+  snapshot.rawMq7   = readAdcAverage(MQ7_PIN);
   snapshot.rawMq135 = readAdcAverage(MQ135_PIN);
   
+  // MQ-4: CH4 (metano) — curva para gas LP/natural
   snapshot.ch4 = calculatePPM(snapshot.rawMq4, RL_MQ4, R0_MQ4, 1012.7, -2.78);
-  snapshot.co = calculatePPM(snapshot.rawMq7, RL_MQ7, R0_MQ7, 99.0, -1.5);
-  snapshot.airQuality = calculatePPM(snapshot.rawMq135, RL_MQ135, R0_MQ135, 110.5, -2.8);
   
-  snapshot.ch4 = clampPpm(snapshot.ch4, 10000.0);
-  snapshot.co = clampPpm(snapshot.co, 1000.0);
+  // MQ-7: CO — curva estándar
+  snapshot.co = calculatePPM(snapshot.rawMq7, RL_MQ7, R0_MQ7, 99.042, -1.518);
+  
+  // MQ-135: usar coeficientes para CO2/humo general (más sensible)
+  snapshot.airQuality = calculatePPM(snapshot.rawMq135, RL_MQ135, R0_MQ135, 102.2, -2.473);
+  
+  snapshot.ch4        = clampPpm(snapshot.ch4, 10000.0);
+  snapshot.co         = clampPpm(snapshot.co, 1000.0);
   snapshot.airQuality = clampPpm(snapshot.airQuality, 10000.0);
   
   snapshot.valid = !(snapshot.rawMq4 == 0 && snapshot.rawMq7 == 0 && snapshot.rawMq135 == 0);
-  
   return snapshot;
 }
 
@@ -296,10 +417,12 @@ SensorSnapshot readSensors() {
  * Evalúa nivel de riesgo
  */
 RiskLevel evaluateRiskLevel(float ppmMQ4, float ppmMQ7, float ppmMQ135) {
-  if (ppmMQ7 > 30 || ppmMQ4 > 1000 || ppmMQ135 > 2000) {
+  // DANGER: gas metano detectable / CO peligroso / humo intenso
+  if (ppmMQ7 > 50 || ppmMQ4 > 300 || ppmMQ135 > 500) {
     return DANGER;
   }
-  if (ppmMQ7 > 9 || ppmMQ4 > 500 || ppmMQ135 > 1000) {
+  // WARNING: presencia moderada de gas / humo leve / CO bajo
+  if (ppmMQ7 > 10 || ppmMQ4 > 80 || ppmMQ135 > 150) {
     return WARNING;
   }
   return SAFE;
@@ -371,30 +494,50 @@ void syncClockIfNeeded(bool forceSync = false) {
  * Conecta a WiFi (no bloqueante)
  */
 bool connectToWifi(const String& ssid, const String& password) {
+  if (ssid.length() == 0) {
+    return false;
+  }
+
   if (WiFi.status() == WL_CONNECTED) {
+    wifiConnected = true;
+    wifiConnecting = false;
+    wifiTimeoutCount = 0;
     return true;
   }
   
-  if (wifiConnected && WiFi.status() != WL_CONNECTED) {
-    // Reconexión después de desconexión
-    if (millis() - wifiRetryTime < WIFI_RETRY_INTERVAL) {
+  if (wifiConnecting) {
+    if (millis() - wifiConnectStartTime < WIFI_CONNECT_TIMEOUT) {
       return false;
     }
+
+    Serial.println("❌ WiFi connection timeout. Resetting station state...");
+    WiFi.disconnect(true, false);
+    WiFi.mode(WIFI_OFF);
+    wifiConnecting = false;
+    wifiConnected = false;
+    wifiTimeoutCount++;
     wifiRetryTime = millis();
-    Serial.println("🔁 Reconnecting WiFi...");
-    WiFi.reconnect();
+
+    if (wifiTimeoutCount >= WIFI_MAX_TIMEOUTS_BEFORE_BLE_RECOVERY) {
+      enterBleRecoveryMode("Too many WiFi timeouts");
+    }
+
     return false;
   }
   
-  if (!wifiConnected) {
-    // Primera conexión
-    Serial.println("📶 Connecting to WiFi...");
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid.c_str(), password.c_str());
-    wifiRetryTime = millis();
+  if (wifiRetryTime != 0 && millis() - wifiRetryTime < WIFI_RETRY_INTERVAL) {
     return false;
   }
-  
+
+  // Primera conexión o nuevo intento tras timeout.
+  wifiConnectStartTime = millis();
+  wifiConnecting = true;
+  wifiConnected = false;
+
+  Serial.println("📶 Connecting to WiFi...");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid.c_str(), password.c_str());
+
   return false;
 }
 
@@ -456,6 +599,42 @@ void deinitializeBLE() {
 }
 
 /**
+ * Entra en modo recuperación BLE limpiando solo credenciales WiFi
+ * para permitir resincronización desde la app sin perder api_secret.
+ */
+void enterBleRecoveryMode(const String& reason) {
+  Serial.println("\n⚠️ ENTERING BLE RECOVERY MODE");
+  Serial.println("   Reason: " + reason);
+
+  preferences.begin("biosense", false);
+  preferences.remove("ssid");
+  preferences.remove("password");
+  preferences.end();
+
+  configuredSsid = "";
+  configuredPassword = "";
+  wifiConnected = false;
+  wifiConnecting = false;
+  wifiTimeoutCount = 0;
+
+  WiFi.disconnect(true, false);
+  WiFi.mode(WIFI_OFF);
+
+  currentState = STATUS_UNCONFIGURED;
+  stateChangeTime = millis();
+
+  digitalWrite(LED_GREEN, LOW);
+  digitalWrite(LED_RED, LOW);
+  digitalWrite(LED_ORANGE, LOW);
+
+  if (!bleInitialized) {
+    initializeBLE();
+  }
+
+  Serial.println("✅ BLE recovery active. Waiting for new WiFi credentials.\n");
+}
+
+/**
  * Envía lectura al backend con reintentos y backoff
  */
 bool sendReading(const SensorSnapshot& sensorData) {
@@ -467,6 +646,11 @@ bool sendReading(const SensorSnapshot& sensorData) {
   
   if (apiSecret.length() == 0) {
     Serial.println("❌ API Secret not configured. Skipping send.");
+    return false;
+  }
+
+  if (isZeroMac(macAddress)) {
+    Serial.println("❌ Invalid MAC 00:00:00:00:00:00. Skipping send and waiting for rebind.");
     return false;
   }
   
@@ -528,13 +712,25 @@ bool sendReading(const SensorSnapshot& sensorData) {
   
   // Handle response codes
   if (httpCode == 200 || httpCode == 201) {
+    unlinkedDeviceCount = 0;
     addToBuffer(readingId, sensorData.ch4, sensorData.co, sensorData.airQuality);
     Serial.println("✅ Reading sent successfully");
     return true;
   } else if (httpCode == 409) {
+    unlinkedDeviceCount = 0;
     addToBuffer(readingId, sensorData.ch4, sensorData.co, sensorData.airQuality);
     Serial.println("✅ Duplicate (409) - Already stored");
     return true;
+  } else if (httpCode == 403 && response.indexOf("Unlinked Device") >= 0) {
+    unlinkedDeviceCount++;
+    Serial.println("❌ Device is not linked in backend for MAC: " + macAddress);
+    Serial.println("   Action: Re-link from mobile app (Profile -> Sync).\n");
+
+    if (unlinkedDeviceCount >= UNLINKED_DEVICE_MAX_RETRIES_BEFORE_RECOVERY) {
+      enterBleRecoveryMode("Backend reports Unlinked Device repeatedly");
+    }
+
+    return false;
   } else if (httpCode == 401 || httpCode == 403) {
     Serial.println("❌ Auth failed - Invalid API Secret");
     return false;
@@ -571,10 +767,16 @@ void handleStateUnconfigured() {
       Serial.println("\n✅ BINDING DETECTED! Transitioning to WARMUP...");
       apiSecret = newSecret;
       configuredSsid = newSsid;
+      
+      preferences.begin("biosense", true);
       configuredPassword = preferences.getString("password", "");
+      preferences.end();
       
       currentState = STATUS_WARMUP;
       stateChangeTime = millis();
+      wifiTimeoutCount = 0;
+      wifiRetryTime = 0;
+      wifiConnectStartTime = 0;
       
       // Deinitialize BLE to free radio resources
       deinitializeBLE();
@@ -591,13 +793,6 @@ void handleStateUnconfigured() {
 void handleStateWarmup() {
   // Attempt WiFi connection
   if (!connectToWifi(configuredSsid, configuredPassword)) {
-    // Still trying to connect
-    if (millis() - wifiRetryTime > WIFI_CONNECT_TIMEOUT) {
-      // Connection timeout - restart
-      Serial.println("❌ WiFi connection timeout. Restarting...");
-      ESP.restart();
-    }
-    
     // Blink green LED during warmup
     if ((millis() / 200) % 2 == 0) {
       digitalWrite(LED_GREEN, HIGH);
@@ -643,8 +838,9 @@ void handleStateOperational() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("❌ WiFi lost. Returning to WARMUP...");
     wifiConnected = false;
+    wifiConnecting = false;
     currentState = STATUS_WARMUP;
-    wifiRetryTime = millis();
+    wifiRetryTime = 0;
     digitalWrite(LED_RED, LOW);
     return;
   }
@@ -691,6 +887,7 @@ void setup() {
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_ORANGE, OUTPUT);
   pinMode(LED_RED, OUTPUT);
+  pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
   digitalWrite(LED_GREEN, LOW);
   digitalWrite(LED_ORANGE, LOW);
   digitalWrite(LED_RED, LOW);
@@ -699,8 +896,15 @@ void setup() {
   analogSetAttenuation(ADC_11db);
   analogSetWidth(12);
   
-  // Get MAC address
-  macAddress = WiFi.macAddress();
+  // Get stable hardware MAC from eFuse (valid before WiFi init)
+  macAddress = getHardwareMacAddress();
+
+  if (isZeroMac(macAddress)) {
+    // Fallback path for rare boards/SDK states
+    WiFi.mode(WIFI_STA);
+    macAddress = WiFi.macAddress();
+  }
+
   Serial.println("📍 MAC: " + macAddress);
   
   // Load configuration from NVS
@@ -720,12 +924,14 @@ void setup() {
   }
   
   stateChangeTime = millis();
-  wifiRetryTime = millis();
+  wifiRetryTime = 0;
   lastBlinkTime = millis();
 }
 
 // ================= MAIN LOOP (STATE MACHINE) =================
 void loop() {
+  checkManualRelinkRequest();
+
   switch (currentState) {
     case STATUS_UNCONFIGURED:
       handleStateUnconfigured();

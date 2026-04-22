@@ -94,6 +94,7 @@ public class R2dbcSensorRepositoryAdapter implements DeviceRepositoryPort, Senso
                                                         row.get("mq7_value", Double.class),
                                                         row.get("mq135_value", Double.class));
                                         reading.setId(row.get("id", Long.class));
+                                        reading.setTimestamp(row.get("timestamp", java.time.Instant.class));
                                         return reading;
                                 })
                                 .all();
