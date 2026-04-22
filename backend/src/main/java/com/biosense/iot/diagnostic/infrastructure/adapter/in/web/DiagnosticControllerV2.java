@@ -17,12 +17,13 @@ public class DiagnosticControllerV2 {
     private final JwtAdapter jwtAdapter;
 
     @GetMapping("/latest")
-    public Mono<ResponseEntity<DiagnosticDomain>> getLatestDiagnostic(@RequestHeader("Authorization") String authHeader) {
+    public Mono<ResponseEntity<DiagnosticDomain>> getLatestDiagnostic(
+            @RequestHeader("Authorization") String authHeader) {
         String token = authHeader.replace("Bearer ", "");
         String email = jwtAdapter.extractUsername(token);
 
         return getLatestDiagnosticUseCase.execute(email)
                 .map(ResponseEntity::ok)
-                .defaultIfEmpty(ResponseEntity.notFound().build());
+                .defaultIfEmpty(ResponseEntity.noContent().build());
     }
 }

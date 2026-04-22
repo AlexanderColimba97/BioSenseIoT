@@ -17,6 +17,10 @@ const fetcher = async (url: string) => {
       }
     });
 
+    if (res.status === 204) {
+      return null;
+    }
+
     if (!res.ok) {
       if (res.status === 404) return null;
       throw new Error(`Error del servidor: ${res.status}`);
