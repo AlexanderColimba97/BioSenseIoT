@@ -3,7 +3,7 @@
 import { LayoutDashboard, Activity, BarChart3, Bell, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-type ViewType = "dashboard" | "monitoreo" | "analisis" | "alertas" | "sensores" | "recomendaciones" | "perfil"
+type ViewType = "dashboard" | "monitoreo" | "analisis" | "alertas" | "recomendaciones" | "perfil"
 
 interface BottomNavigationProps {
   currentView: ViewType
@@ -73,7 +73,7 @@ export function BottomNavigation({ currentView, onNavigate, alertCount = 0 }: Bo
 
         {/* More button */}
         <button
-          onClick={() => onNavigate("sensores")}
+          onClick={() => onNavigate("perfil")}
           className={cn(
             "relative flex flex-col items-center justify-center w-16 h-14 rounded-xl transition-all duration-200",
             "active:scale-95",

@@ -4,6 +4,10 @@ export type AirQualityLevel = 'NORMAL' | 'PRECAUCION' | 'PELIGRO';
 export interface DiagnosticResponse {
   diagnosticText: string;
   severity: Severity;
+  riskLevel?: 'SAFE' | 'WARNING' | 'DANGER';
+  confidence?: number;
+  affectedPet?: string;
+  environmentContext?: string;
   recommendation: string;
   timestamp: string;
   mq4: number;   // CH4/Gas Natural
@@ -57,10 +61,32 @@ export interface AuthResponse {
 }
 
 export interface PetProfile {
+  id?: number;
   name: string;
   species: string;
   breed: string;
+  ageYears?: number;
+  weightKg?: number;
+  sensitivityLevel?: string;
+  respiratoryRisk?: string;
+  activityLevel?: string;
   vulnerabilities: string;
+}
+
+export interface EnvironmentProfile {
+  id?: number;
+  profileName: string;
+  spaceType: string;
+  areaType: string;
+  ventilationLevel: string;
+  urbanContext: string;
+  notes?: string;
+}
+
+export interface UserContextProfile {
+  email: string;
+  pets: PetProfile[];
+  environment: EnvironmentProfile;
 }
 
 // --- NUEVAS DEFINICIONES PARA EVITAR ERRORES EN EL DASHBOARD ---

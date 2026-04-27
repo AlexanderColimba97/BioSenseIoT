@@ -93,16 +93,18 @@ export function AnalysisView() {
           
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={displayData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+              <LineChart data={displayData} margin={{ top: 8, right: 10, left: 10, bottom: 8 }}>
                 <XAxis 
                   dataKey="label" 
                   axisLine={false} 
                   tickLine={false}
+                  tickMargin={8}
                   tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                 />
                 <YAxis 
                   axisLine={false} 
                   tickLine={false}
+                  tickMargin={8}
                   tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
                 />
                 <Tooltip 

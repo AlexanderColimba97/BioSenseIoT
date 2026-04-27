@@ -43,8 +43,25 @@ export function MonitoringView({ data }: MonitoringViewProps) {
   return (
     <div className="pb-24">
       {/* Header */}
-      <div className="p-4 pb-0">
-        <h1 className="text-2xl font-bold tracking-tight">Monitoreo Detallado</h1>
+      <div className="p-4 pb-2">
+        <h1 className="text-2xl font-black tracking-tight">Monitoreo en tiempo real</h1>
+        <p className="text-xs text-muted-foreground mt-1">Vista operativa para seguimiento continuo de gases</p>
+      </div>
+
+      {/* Quick KPIs */}
+      <div className="px-4 pb-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3">
+          <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-bold">CO (MQ-7)</p>
+          <p className="text-xl font-black text-emerald-900 mt-1">{data.mq7.toFixed(1)} ppm</p>
+        </div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
+          <p className="text-[10px] uppercase tracking-wider text-amber-700 font-bold">CH4 (MQ-4)</p>
+          <p className="text-xl font-black text-amber-900 mt-1">{data.mq4.toFixed(1)} ppm</p>
+        </div>
+        <div className="rounded-2xl border border-cyan-200 bg-cyan-50/70 p-3">
+          <p className="text-[10px] uppercase tracking-wider text-cyan-700 font-bold">Aire (MQ-135)</p>
+          <p className="text-xl font-black text-cyan-900 mt-1">{data.mq135.toFixed(1)} ppm</p>
+        </div>
       </div>
 
       {/* Room Selector */}
@@ -99,7 +116,7 @@ export function MonitoringView({ data }: MonitoringViewProps) {
       </div>
 
       {/* CO Chart */}
-      <div className="p-4">
+      <div className="p-4 pt-2">
         <div className="bg-card rounded-2xl border border-border/50 p-4 animate-fade-in-up" style={{ animationDelay: '150ms' }}>
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -116,16 +133,18 @@ export function MonitoringView({ data }: MonitoringViewProps) {
           
           <div className="h-40">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklyData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+              <BarChart data={weeklyData} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
                 <XAxis 
                   dataKey="day" 
                   axisLine={false} 
                   tickLine={false}
+                  tickMargin={8}
                   tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                 />
                 <YAxis 
                   axisLine={false} 
                   tickLine={false}
+                  tickMargin={8}
                   tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
                   domain={[0, 60]}
                 />
@@ -173,16 +192,18 @@ export function MonitoringView({ data }: MonitoringViewProps) {
           
           <div className="h-40">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklyData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+              <BarChart data={weeklyData} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
                 <XAxis 
                   dataKey="day" 
                   axisLine={false} 
                   tickLine={false}
+                  tickMargin={8}
                   tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                 />
                 <YAxis 
                   axisLine={false} 
                   tickLine={false}
+                  tickMargin={8}
                   tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
                   domain={[0, 60]}
                 />
@@ -224,16 +245,18 @@ export function MonitoringView({ data }: MonitoringViewProps) {
           
           <div className="h-40">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklyData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+              <BarChart data={weeklyData} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
                 <XAxis 
                   dataKey="day" 
                   axisLine={false} 
                   tickLine={false}
+                  tickMargin={8}
                   tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                 />
                 <YAxis 
                   axisLine={false} 
                   tickLine={false}
+                  tickMargin={8}
                   tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
                   domain={[0, 40]}
                 />

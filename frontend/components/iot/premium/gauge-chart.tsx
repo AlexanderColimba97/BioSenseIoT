@@ -30,8 +30,8 @@ export function GaugeChart({ value, maxValue, sensor, label, unit = 'ppm' }: Gau
   const strokeDashoffset = circumference - (percentage / 100) * circumference * 0.75
   
   return (
-    <div className="flex flex-col items-center">
-      <div className="relative h-32 w-32">
+    <div className="flex flex-col items-center w-full min-w-0">
+      <div className="relative h-[88px] w-[88px] sm:h-[104px] sm:w-[104px]">
         <svg className="h-full w-full -rotate-[135deg]" viewBox="0 0 100 100">
           {/* Background arc */}
           <circle
@@ -66,18 +66,18 @@ export function GaugeChart({ value, maxValue, sensor, label, unit = 'ppm' }: Gau
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span 
             className={cn(
-              'text-2xl font-bold tabular-nums transition-colors duration-300',
+              'text-lg sm:text-xl font-black tabular-nums leading-none transition-colors duration-300',
               status === 'NORMAL' && 'text-emerald-500',
               status === 'PRECAUCION' && 'text-amber-500',
               status === 'PELIGRO' && 'text-red-500'
             )}
           >
-            {value}
+            {value.toFixed(2)}
           </span>
-          <span className="text-xs text-muted-foreground">{unit}</span>
+          <span className="text-[10px] sm:text-xs text-muted-foreground leading-none mt-1">{unit}</span>
         </div>
       </div>
-      <span className="mt-2 text-sm font-medium text-muted-foreground">{label}</span>
+      <span className="mt-2 text-[11px] sm:text-sm font-medium text-muted-foreground text-center leading-tight">{label}</span>
     </div>
   )
 }

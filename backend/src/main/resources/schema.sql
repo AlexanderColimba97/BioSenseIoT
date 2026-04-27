@@ -39,6 +39,28 @@ CREATE TABLE IF NOT EXISTS pets (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Backward-compatible extensions for pets risk profiling
+ALTER TABLE IF EXISTS pets
+ADD COLUMN IF NOT EXISTS age_years INTEGER;
+
+ALTER TABLE IF EXISTS pets
+ADD COLUMN IF NOT EXISTS weight_kg DOUBLE PRECISION;
+
+ALTER TABLE IF EXISTS pets
+ADD COLUMN IF NOT EXISTS sensitivity_level VARCHAR(20) DEFAULT 'MEDIUM';
+
+ALTER TABLE IF EXISTS pets
+ADD COLUMN IF NOT EXISTS respiratory_risk VARCHAR(20) DEFAULT 'NORMAL';
+
+ALTER TABLE IF EXISTS pets
+ADD COLUMN IF NOT EXISTS activity_level VARCHAR(20) DEFAULT 'MEDIUM';
+
+ALTER TABLE IF EXISTS pets
+ADD COLUMN IF NOT EXISTS health_risk_level VARCHAR(20) DEFAULT 'MEDIUM';
+
+ALTER TABLE IF EXISTS pets
+ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+
 -- Devices table
 CREATE TABLE IF NOT EXISTS devices (
     id SERIAL PRIMARY KEY,
@@ -119,6 +141,88 @@ CREATE TABLE IF NOT EXISTS ai_diagnostics (
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE IF EXISTS ai_diagnostics
+ADD COLUMN IF NOT EXISTS risk_level VARCHAR(20);
+
+ALTER TABLE IF EXISTS ai_diagnostics
+ADD COLUMN IF NOT EXISTS confidence DOUBLE PRECISION;
+
+ALTER TABLE IF EXISTS ai_diagnostics
+ADD COLUMN IF NOT EXISTS affected_pet VARCHAR(120);
+
+ALTER TABLE IF EXISTS ai_diagnostics
+ADD COLUMN IF NOT EXISTS environment_context VARCHAR(160);
+
+-- Environment profile by user (supports context-aware diagnostics)
+CREATE TABLE IF NOT EXISTS environment_profiles (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    profile_name VARCHAR(100) NOT NULL DEFAULT 'Principal',
+    space_type VARCHAR(30) NOT NULL DEFAULT 'APARTMENT',
+    area_type VARCHAR(20) NOT NULL DEFAULT 'INDOOR',
+    ventilation_level VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
+    urban_context VARCHAR(20) NOT NULL DEFAULT 'URBAN',
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Optional assignment if users move one device across contexts
+CREATE TABLE IF NOT EXISTS device_environment_assignments (
+    id SERIAL PRIMARY KEY,
+    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    environment_profile_id INTEGER NOT NULL REFERENCES environment_profiles(id) ON DELETE CASCADE,
+    assigned_from TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    assigned_to TIMESTAMP WITH TIME ZONE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+-- Materialized risk evaluation for each reading/user context
+CREATE TABLE IF NOT EXISTS risk_assessments (
+    id BIGSERIAL PRIMARY KEY,
+    reading_id BIGINT NOT NULL REFERENCES sensor_readings(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    pet_id INTEGER REFERENCES pets(id) ON DELETE SET NULL,
+    environment_profile_id INTEGER REFERENCES environment_profiles(id) ON DELETE SET NULL,
+    risk_level VARCHAR(20) NOT NULL,
+    risk_score DOUBLE PRECISION NOT NULL,
+    confidence DOUBLE PRECISION,
+    dominant_factor VARCHAR(30),
+    explanation TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(reading_id, user_id, pet_id)
+);
+
+-- Generated recommendations linked to risk assessment
+CREATE TABLE IF NOT EXISTS recommendation_events (
+    id BIGSERIAL PRIMARY KEY,
+    risk_assessment_id BIGINT NOT NULL REFERENCES risk_assessments(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pet_id INTEGER REFERENCES pets(id) ON DELETE SET NULL,
+    urgency VARCHAR(20) NOT NULL,
+    title VARCHAR(160) NOT NULL,
+    message TEXT NOT NULL,
+    actions_json TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Exposure windows per pet to detect repeated and prolonged risk events
+CREATE TABLE IF NOT EXISTS exposure_history (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pet_id INTEGER REFERENCES pets(id) ON DELETE SET NULL,
+    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    window_start TIMESTAMP WITH TIME ZONE NOT NULL,
+    window_end TIMESTAMP WITH TIME ZONE NOT NULL,
+    co_peak DOUBLE PRECISION,
+    ch4_peak DOUBLE PRECISION,
+    aq_peak DOUBLE PRECISION,
+    warning_minutes INTEGER NOT NULL DEFAULT 0,
+    danger_minutes INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- 2. INDEXES (Idempotentes)
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_device_id ON sensor_readings(device_id);
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_timestamp ON sensor_readings(timestamp DESC);
@@ -127,8 +231,16 @@ CREATE INDEX IF NOT EXISTS idx_sensor_readings_reading_id ON sensor_readings(rea
 CREATE INDEX IF NOT EXISTS idx_ai_diagnostics_user_id ON ai_diagnostics(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_diagnostics_user_timestamp ON ai_diagnostics(user_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_diagnostics_reading_id ON ai_diagnostics(reading_id);
+CREATE INDEX IF NOT EXISTS idx_ai_diagnostics_risk_level ON ai_diagnostics(risk_level);
 CREATE INDEX IF NOT EXISTS idx_pets_user_id ON pets(user_id);
+CREATE INDEX IF NOT EXISTS idx_pets_user_species ON pets(user_id, species);
 CREATE INDEX IF NOT EXISTS idx_devices_mac_address ON devices(mac_address);
 CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id) WHERE user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_user_devices_user_id ON user_devices(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_devices_device_id ON user_devices(device_id);
+CREATE INDEX IF NOT EXISTS idx_environment_profiles_user_id ON environment_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_device_environment_assignments_device_active ON device_environment_assignments(device_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_risk_assessments_reading_user ON risk_assessments(reading_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_risk_assessments_user_created ON risk_assessments(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_recommendation_events_user_created ON recommendation_events(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_exposure_history_pet_window ON exposure_history(pet_id, window_end DESC);

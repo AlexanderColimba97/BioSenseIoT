@@ -9,13 +9,12 @@ import { DashboardView } from "@/components/iot/premium/views/dashboard-view"
 import { MonitoringView } from "@/components/iot/premium/views/monitoring-view"
 import { AlertsView } from "@/components/iot/premium/views/alerts-view"
 import { AnalysisView } from "@/components/iot/premium/views/analysis-view"
-import { SensorsView } from "@/components/iot/premium/views/sensors-view"
 import { RecommendationsView } from "@/components/iot/premium/views/recommendations-view"
 import { ProfileView } from "@/components/iot/premium/views/profile-view"
 import { useSensorData } from "@/hooks/use-sensor-data"
 import { AuthService } from "@/lib/auth-service"
 
-type ViewType = "dashboard" | "monitoreo" | "analisis" | "alertas" | "sensores" | "recomendaciones" | "perfil"
+type ViewType = "dashboard" | "monitoreo" | "analisis" | "alertas" | "recomendaciones" | "perfil"
 
 export default function AirQualityApp() {
   const [mounted, setMounted] = useState(false)
@@ -71,8 +70,6 @@ export default function AirQualityApp() {
         return <AlertsView />
       case "analisis":
         return <AnalysisView />
-      case "sensores":
-        return <SensorsView />
       case "recomendaciones":
         return <RecommendationsView data={data} />
       case "perfil":

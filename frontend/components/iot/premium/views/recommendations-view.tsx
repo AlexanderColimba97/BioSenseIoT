@@ -162,6 +162,15 @@ export function RecommendationsView({ data }: RecommendationsViewProps) {
               </p>
             </div>
           </div>
+
+          {(data.riskLevel || data.affectedPet || data.environmentContext) && (
+            <div className="mt-4 pt-4 border-t border-primary/20 text-sm space-y-1">
+              {data.riskLevel && <p><span className="font-semibold">Riesgo:</span> {data.riskLevel}</p>}
+              {typeof data.confidence === 'number' && <p><span className="font-semibold">Confianza:</span> {(data.confidence * 100).toFixed(0)}%</p>}
+              {data.affectedPet && <p><span className="font-semibold">Mascota:</span> {data.affectedPet}</p>}
+              {data.environmentContext && <p><span className="font-semibold">Entorno:</span> {data.environmentContext}</p>}
+            </div>
+          )}
         </div>
       </div>
 

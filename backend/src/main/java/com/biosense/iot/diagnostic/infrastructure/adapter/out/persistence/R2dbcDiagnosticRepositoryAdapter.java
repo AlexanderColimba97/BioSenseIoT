@@ -25,6 +25,10 @@ public class R2dbcDiagnosticRepositoryAdapter implements DiagnosticRepositoryPor
                 .map(row -> DiagnosticDomain.builder()
                         .diagnosticText(row.get("diagnostic_text", String.class))
                         .severity(row.get("severity", String.class))
+                    .riskLevel(row.get("risk_level", String.class))
+                    .confidence(row.get("confidence", Double.class))
+                    .affectedPet(row.get("affected_pet", String.class))
+                    .environmentContext(row.get("environment_context", String.class))
                         .recommendation(row.get("recommendation", String.class))
                         .timestamp(row.get("timestamp", Instant.class))
                         .mq4(row.get("mq4_value", Double.class))
@@ -43,14 +47,20 @@ public class R2dbcDiagnosticRepositoryAdapter implements DiagnosticRepositoryPor
     }
 
     @Override
-    public Mono<Void> save(Integer userId, Long readingId, String severity, String diagnosticText, String recommendation) {
+    public Mono<Void> save(Integer userId, Long readingId, String severity, String riskLevel, Double confidence,
+                           String affectedPet, String environmentContext, String diagnosticText,
+                           String recommendation) {
         return databaseClient.sql(
-                "INSERT INTO ai_diagnostics (user_id, reading_id, diagnostic_text, severity, recommendation, timestamp) " +
-                "VALUES (:userId, :readingId, :diagnosticText, :severity, :recommendation, NOW())")
+                "INSERT INTO ai_diagnostics (user_id, reading_id, diagnostic_text, severity, risk_level, confidence, affected_pet, environment_context, recommendation, timestamp) " +
+                "VALUES (:userId, :readingId, :diagnosticText, :severity, :riskLevel, :confidence, :affectedPet, :environmentContext, :recommendation, NOW())")
                 .bind("userId", userId)
                 .bind("readingId", readingId)
                 .bind("diagnosticText", diagnosticText)
                 .bind("severity", severity)
+                .bind("riskLevel", riskLevel)
+                .bind("confidence", confidence)
+                .bind("affectedPet", affectedPet)
+                .bind("environmentContext", environmentContext)
                 .bind("recommendation", recommendation)
                 .then();
     }

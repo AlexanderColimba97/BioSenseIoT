@@ -14,6 +14,10 @@ import java.time.Instant;
 public class DiagnosticDomain {
     private String diagnosticText;
     private String severity;
+    private String riskLevel;
+    private Double confidence;
+    private String affectedPet;
+    private String environmentContext;
     private String recommendation;
     private Instant timestamp;
     private Double mq4;

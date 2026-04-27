@@ -12,12 +12,16 @@ import {
   Shield,
   Plus,
   LayoutDashboard,
-  Trash2
+  Trash2,
+  PawPrint,
+  Home
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { AuthService } from "@/lib/auth-service"
 import { getUserDevices, unlinkDevice, type Device } from "@/lib/device-service"
+import { deletePetProfile, getUserContextProfile, saveEnvironmentProfile, savePetProfile } from "@/lib/profile-context-service"
+import type { EnvironmentProfile, PetProfile } from "@/lib/types"
 import SyncDeviceModal from "@/components/SyncDeviceModal"
 import { toast } from "sonner"
 
@@ -33,6 +37,28 @@ export function ProfileView({ onNavigateToDashboard }: ProfileViewProps) {
   const [showSyncModal, setShowSyncModal] = useState(false)
   const [devices, setDevices] = useState<Device[]>([])
   const [loadingDevices, setLoadingDevices] = useState(false)
+  const [pets, setPets] = useState<PetProfile[]>([])
+  const [environment, setEnvironment] = useState<EnvironmentProfile>({
+    profileName: "Principal",
+    spaceType: "APARTMENT",
+    areaType: "INDOOR",
+    ventilationLevel: "MEDIUM",
+    urbanContext: "URBAN",
+    notes: "",
+  })
+  const [savingPet, setSavingPet] = useState(false)
+  const [savingEnvironment, setSavingEnvironment] = useState(false)
+  const [petForm, setPetForm] = useState<PetProfile>({
+    name: "",
+    species: "DOG",
+    breed: "",
+    ageYears: undefined,
+    weightKg: undefined,
+    sensitivityLevel: "MEDIUM",
+    respiratoryRisk: "NORMAL",
+    activityLevel: "MEDIUM",
+    vulnerabilities: "",
+  })
 
   const loadDevices = async () => {
     setLoadingDevices(true)
@@ -50,7 +76,20 @@ export function ProfileView({ onNavigateToDashboard }: ProfileViewProps) {
 
   useEffect(() => {
     loadDevices()
+    loadProfileContext()
   }, [])
+
+  const loadProfileContext = async () => {
+    try {
+      const context = await getUserContextProfile()
+      setPets(context.pets || [])
+      if (context.environment) {
+        setEnvironment(context.environment)
+      }
+    } catch (error) {
+      console.error('Error loading profile context:', error)
+    }
+  }
 
   const handleLogout = async () => {
     await AuthService.logout();
@@ -74,6 +113,63 @@ export function ProfileView({ onNavigateToDashboard }: ProfileViewProps) {
       loadDevices()
     } catch (error) {
       toast.error('Error al desvincular el dispositivo')
+    }
+  }
+
+  const handleSavePet = async () => {
+    if (!petForm.name || !petForm.breed) {
+      toast.error('Nombre y raza son requeridos')
+      return
+    }
+
+    try {
+      setSavingPet(true)
+      await savePetProfile(petForm)
+      toast.success('Mascota guardada')
+      setPetForm({
+        name: "",
+        species: "DOG",
+        breed: "",
+        ageYears: undefined,
+        weightKg: undefined,
+        sensitivityLevel: "MEDIUM",
+        respiratoryRisk: "NORMAL",
+        activityLevel: "MEDIUM",
+        vulnerabilities: "",
+      })
+      loadProfileContext()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo guardar la mascota'
+      toast.error(message)
+    } finally {
+      setSavingPet(false)
+    }
+  }
+
+  const handleDeletePet = async (petId?: number) => {
+    if (!petId) return
+    if (!confirm('¿Eliminar esta mascota del perfil?')) return
+
+    try {
+      await deletePetProfile(petId)
+      toast.success('Mascota eliminada')
+      loadProfileContext()
+    } catch {
+      toast.error('No se pudo eliminar la mascota')
+    }
+  }
+
+  const handleSaveEnvironment = async () => {
+    try {
+      setSavingEnvironment(true)
+      await saveEnvironmentProfile(environment)
+      toast.success('Entorno guardado')
+      loadProfileContext()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo guardar el entorno'
+      toast.error(message)
+    } finally {
+      setSavingEnvironment(false)
     }
   }
 
@@ -164,6 +260,154 @@ export function ProfileView({ onNavigateToDashboard }: ProfileViewProps) {
             ))}
           </div>
         )}
+      </div>
+
+      {/* CONTEXTO INTELIGENTE: Mascotas + Entorno */}
+      <div className="px-4 space-y-6 mb-6">
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <PawPrint className="w-5 h-5 text-primary" />
+            <h2 className="font-bold text-lg">Mascotas y Sensibilidad</h2>
+          </div>
+
+          <div className="bg-card rounded-3xl border border-border/50 p-4 shadow-sm space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input
+                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+                placeholder="Nombre mascota"
+                value={petForm.name}
+                onChange={(e) => setPetForm((prev) => ({ ...prev, name: e.target.value }))}
+              />
+              <input
+                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+                placeholder="Raza"
+                value={petForm.breed}
+                onChange={(e) => setPetForm((prev) => ({ ...prev, breed: e.target.value }))}
+              />
+              <select
+                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+                value={petForm.species}
+                onChange={(e) => setPetForm((prev) => ({ ...prev, species: e.target.value }))}
+              >
+                <option value="DOG">Perro</option>
+                <option value="CAT">Gato</option>
+                <option value="BIRD">Ave</option>
+                <option value="RABBIT">Conejo</option>
+                <option value="OTHER">Otro</option>
+              </select>
+              <select
+                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+                value={petForm.sensitivityLevel}
+                onChange={(e) => setPetForm((prev) => ({ ...prev, sensitivityLevel: e.target.value }))}
+              >
+                <option value="LOW">Sensibilidad baja</option>
+                <option value="MEDIUM">Sensibilidad media</option>
+                <option value="HIGH">Sensibilidad alta</option>
+              </select>
+              <input
+                type="number"
+                min={0}
+                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+                placeholder="Edad (años)"
+                value={petForm.ageYears ?? ""}
+                onChange={(e) => setPetForm((prev) => ({ ...prev, ageYears: e.target.value ? Number(e.target.value) : undefined }))}
+              />
+              <input
+                type="number"
+                min={0}
+                step="0.1"
+                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+                placeholder="Peso (kg)"
+                value={petForm.weightKg ?? ""}
+                onChange={(e) => setPetForm((prev) => ({ ...prev, weightKg: e.target.value ? Number(e.target.value) : undefined }))}
+              />
+            </div>
+
+            <textarea
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+              placeholder="Vulnerabilidades (asma, braquicefalia, etc.)"
+              value={petForm.vulnerabilities}
+              onChange={(e) => setPetForm((prev) => ({ ...prev, vulnerabilities: e.target.value }))}
+            />
+
+            <Button className="w-full" disabled={savingPet} onClick={handleSavePet}>
+              {savingPet ? 'Guardando...' : 'Guardar Mascota'}
+            </Button>
+
+            {pets.length > 0 && (
+              <div className="space-y-2 pt-2">
+                {pets.map((pet) => (
+                  <div key={`${pet.id}-${pet.name}`} className="rounded-xl border border-border/50 p-3 flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-sm">{pet.name} • {pet.species} - {pet.breed}</p>
+                      <p className="text-xs text-muted-foreground">Sensibilidad: {pet.sensitivityLevel || 'MEDIUM'} | Resp: {pet.respiratoryRisk || 'NORMAL'}</p>
+                    </div>
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDeletePet(pet.id)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <Home className="w-5 h-5 text-primary" />
+            <h2 className="font-bold text-lg">Perfil del Entorno</h2>
+          </div>
+
+          <div className="bg-card rounded-3xl border border-border/50 p-4 shadow-sm space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input
+                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+                placeholder="Nombre del entorno"
+                value={environment.profileName}
+                onChange={(e) => setEnvironment((prev) => ({ ...prev, profileName: e.target.value }))}
+              />
+              <select
+                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+                value={environment.spaceType}
+                onChange={(e) => setEnvironment((prev) => ({ ...prev, spaceType: e.target.value }))}
+              >
+                <option value="HOUSE">Casa</option>
+                <option value="APARTMENT">Apartamento</option>
+                <option value="OFFICE">Oficina</option>
+                <option value="CLINIC">Clínica</option>
+                <option value="OTHER">Otro</option>
+              </select>
+              <select
+                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+                value={environment.areaType}
+                onChange={(e) => setEnvironment((prev) => ({ ...prev, areaType: e.target.value }))}
+              >
+                <option value="INDOOR">Interior</option>
+                <option value="OUTDOOR">Exterior</option>
+                <option value="MIXED">Mixto</option>
+              </select>
+              <select
+                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+                value={environment.ventilationLevel}
+                onChange={(e) => setEnvironment((prev) => ({ ...prev, ventilationLevel: e.target.value }))}
+              >
+                <option value="LOW">Ventilación baja</option>
+                <option value="MEDIUM">Ventilación media</option>
+                <option value="HIGH">Ventilación alta</option>
+              </select>
+            </div>
+            <textarea
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+              placeholder="Notas del entorno (fugas previas, humo, cocina a gas, etc.)"
+              value={environment.notes || ''}
+              onChange={(e) => setEnvironment((prev) => ({ ...prev, notes: e.target.value }))}
+            />
+
+            <Button className="w-full" onClick={handleSaveEnvironment} disabled={savingEnvironment}>
+              {savingEnvironment ? 'Guardando...' : 'Guardar Entorno'}
+            </Button>
+          </div>
+        </section>
       </div>
 
       {/* CONFIGURACIÓN: Agrupada por funcionalidad */}

@@ -5,7 +5,6 @@ import {
   Activity, 
   BarChart3, 
   Bell, 
-  Radio, 
   Lightbulb, 
   User, 
   LogOut,
@@ -15,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-type ViewType = "dashboard" | "monitoreo" | "analisis" | "alertas" | "sensores" | "recomendaciones" | "perfil"
+type ViewType = "dashboard" | "monitoreo" | "analisis" | "alertas" | "recomendaciones" | "perfil"
 
 interface AppSidebarProps {
   isOpen: boolean
@@ -30,7 +29,6 @@ const menuItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
   { id: "monitoreo", label: "Monitoreo", icon: Activity },
   { id: "analisis", label: "Analisis", icon: BarChart3 },
   { id: "alertas", label: "Alertas", icon: Bell },
-  { id: "sensores", label: "Sensores", icon: Radio },
   { id: "recomendaciones", label: "Recomendaciones IA", icon: Lightbulb },
   { id: "perfil", label: "Perfil", icon: User },
 ]

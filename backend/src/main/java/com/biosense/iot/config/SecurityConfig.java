@@ -57,6 +57,7 @@ public class SecurityConfig {
                         .pathMatchers("/api/v2/auth/**").permitAll()
                         .pathMatchers("/api/v2/devices/**").authenticated()
                         .pathMatchers("/api/v2/diagnostics/**").authenticated()
+                        .pathMatchers("/api/v2/profile/**").authenticated()
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtDecoder(jwtDecoder())));

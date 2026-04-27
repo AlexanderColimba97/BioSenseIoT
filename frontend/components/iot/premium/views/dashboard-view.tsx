@@ -147,11 +147,14 @@ const SensorProgress = memo(function SensorProgress({ sensor }: { sensor: Dashbo
   return (
     <Card className="rounded-2xl border border-slate-200 bg-white/80">
       <CardContent className="p-3 space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-bold tracking-wide uppercase text-slate-600">{sensor.label}</span>
+        <div className="flex items-center justify-between text-[10px] sm:text-xs gap-2">
+          <span className="font-bold tracking-wide uppercase text-slate-600 truncate">{sensor.label}</span>
           <span className="text-slate-500">max {sensor.max} {sensor.unit}</span>
         </div>
-        <p className="text-2xl font-black text-slate-900 tabular-nums">{sensor.value.toFixed(1)} {sensor.unit}</p>
+        <div>
+          <p className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums leading-none">{sensor.value.toFixed(1)}</p>
+          <p className="text-xs text-slate-500 mt-1">{sensor.unit}</p>
+        </div>
         <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
           <div className={cn('h-full transition-all duration-500', barClass)} style={{ width: `${ratio}%` }} />
         </div>
@@ -263,7 +266,7 @@ export function DashboardView({
         </CardHeader>
         
         <CardContent>
-          <div className="flex justify-around items-end py-6 gap-2">
+          <div className="grid grid-cols-3 gap-1 sm:gap-3 py-4 place-items-center">
             <GaugeChart value={state.sensors[1].value} sensor="mq4" label="CH4 (MQ4)" />
             <GaugeChart value={state.sensors[0].value} sensor="mq7" label="CO (MQ7)" />
             <GaugeChart value={state.sensors[2].value} sensor="mq135" label="Aire (MQ135)" />
@@ -275,7 +278,7 @@ export function DashboardView({
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {state.sensors.map((sensor) => (
           <SensorProgress key={sensor.id} sensor={sensor} />
         ))}
@@ -312,7 +315,7 @@ function DashboardSkeleton() {
   return (
     <div className="p-4 space-y-4">
       <Skeleton className="h-64 w-full rounded-[40px]" />
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <Skeleton className="h-24 rounded-2xl" />
         <Skeleton className="h-24 rounded-2xl" />
         <Skeleton className="h-24 rounded-2xl" />
