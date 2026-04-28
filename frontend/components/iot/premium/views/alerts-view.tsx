@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { AlertCard, NotificationToggle } from "../alert-card"
 import { Button } from "@/components/ui/button"
 import { usePets } from "@/hooks/use-pets"
@@ -8,6 +8,10 @@ import { useSensorData } from "@/hooks/use-sensor-data"
 import { usePetRisk, RISK_ICONS } from "@/hooks/use-pet-risk"
 import { PetSelector } from "../selectors/pet-selector"
 import { Badge } from "@/components/ui/badge"
+import { useLatestAlert } from "@/hooks/use-latest-alert"
+import { ActiveAlertCard } from "../active-alert-card"
+import { AlertDetailModal } from "../alert-detail-modal"
+import useSWR from 'swr'
 
 const activeAlerts = [
   {
@@ -75,6 +79,23 @@ export function AlertsView() {
   const selectedPet = pets?.find((p) => p.id === selectedPetId)
   const selectedPetRisk = selectedPet ? usePetRisk(selectedPet, latestDiagnostic ? [latestDiagnostic] : undefined) : null
 
+  // latest alert from backend (polling every 5s)
+  const { alert: latestAlert, isLoading: latestLoading, isError, mutate: mutateLatest } = useLatestAlert({ refreshInterval: 5000 })
+
+  // lightweight history fetch (separate endpoint) - polled
+  const { data: history } = useSWR('/api/v2/alerts?limit=10', (url) => fetch(url).then(r => r.json()), { refreshInterval: 7000, dedupingInterval: 4000 })
+
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  const activeAlert = useMemo(() => {
+    if (!latestAlert) return null
+    const sev = (latestAlert.severity || '').toString().toLowerCase()
+    if (sev === 'critica' || sev === 'critical' || sev === 'moderada' || sev === 'moderate' || sev === 'danger' || sev === 'high') {
+      return latestAlert
+    }
+    return null
+  }, [latestAlert])
+
   return (
     <div className="pb-24">
       {/* Header */}
@@ -115,58 +136,82 @@ export function AlertsView() {
         </div>
       )}
 
-      {/* Active Alerts */}
+      {/* Active Alerts - show single most relevant active alert */}
       <div className="px-4">
         <h2 className="font-semibold text-lg mb-3">Alertas Activas</h2>
         <div className="space-y-3">
-          {activeAlerts.map((alert, index) => (
-            <div key={alert.id}>
-              <AlertCard
-                {...alert}
-                delay={index * 50}
-              />
-              {/* Mostrar mascotas afectadas si existe selección */}
-              {selectedPet && selectedPetRisk?.isAtRisk && (
-                <div className="mt-2 ml-4 p-2 bg-amber-50 border-l-2 border-amber-300 rounded text-xs">
-                  <p className="text-amber-900">
-                    <Badge className="mr-2 bg-amber-500">⚠</Badge>
-                    Esta alerta puede afectar a <strong>{selectedPet.name}</strong>
-                  </p>
+          {activeAlert ? (
+            <ActiveAlertCard
+              id={activeAlert.id}
+              title={activeAlert.title || activeAlert.message || 'Alerta'}
+              gasType={activeAlert.gas}
+              ppm={activeAlert.value || activeAlert.ppm}
+              location={activeAlert.location}
+              time={activeAlert.time}
+              severity={(activeAlert.severity || '').toString().toUpperCase()}
+              onClick={() => setIsModalOpen(true)}
+            />
+          ) : (
+            <div className="p-4">
+              <div className="border rounded-2xl p-4 bg-emerald-50 flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold">Estado: Seguro</h3>
+                  <p className="text-xs text-slate-600">No hay alertas críticas o moderadas en este momento.</p>
                 </div>
-              )}
+                <div className="text-emerald-600 font-bold">✓</div>
+              </div>
             </div>
-          ))}
+          )}
+
+          {/* If selected pet at risk, show inline message */}
+          {selectedPet && selectedPetRisk?.isAtRisk && (
+            <div className="mt-2 ml-0 p-2 bg-amber-50 border-l-2 border-amber-300 rounded text-xs">
+              <p className="text-amber-900">
+                <Badge className="mr-2 bg-amber-500">⚠</Badge>
+                Esta alerta puede afectar a <strong>{selectedPet.name}</strong>
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Alert History */}
+      {/* Alert History (dynamic) */}
       <div className="p-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-lg">Historial de Alertas</h2>
           <Button 
             variant="ghost" 
             className="text-primary text-sm font-medium h-auto p-0 hover:bg-transparent hover:text-primary/80"
+            onClick={async () => {
+              await fetch('/api/v2/alerts/clear', { method: 'POST' }).catch(() => {})
+            }}
           >
             Limpiar historial
           </Button>
         </div>
-        
+
         <div className="bg-card rounded-2xl border border-border/50 p-4 animate-fade-in-up" style={{ animationDelay: '200ms' }}>
-          {alertHistory.map((alert, index) => (
-            <AlertCard
-              key={alert.id}
-              id={alert.id}
-              title={alert.title}
-              description={alert.description}
-              location=""
-              time={alert.time}
-              severity="baja"
-              resolved
-              delay={200 + index * 50}
-            />
-          ))}
+          {(history && history.length > 0) ? (
+            history.map((h: any, index: number) => (
+              <AlertCard
+                key={h.id}
+                id={h.id}
+                title={h.title}
+                description={`${h.location} - ${h.value || h.ppm || ''}`}
+                location={h.location}
+                time={h.time}
+                severity={h.severity || 'baja'}
+                resolved={h.resolved}
+                delay={200 + index * 50}
+              />
+            ))
+          ) : (
+            <p className="text-sm text-slate-500">No hay historial de alertas.</p>
+          )}
         </div>
       </div>
+
+      <AlertDetailModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} alert={activeAlert || latestAlert} />
     </div>
   )
 }

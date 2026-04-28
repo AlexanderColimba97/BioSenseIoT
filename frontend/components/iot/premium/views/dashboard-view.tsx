@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '../status-indicator'
 import { GaugeChart } from '../gauge-chart'
+import { AlertSummary, AlertSeverity } from '../alert-summary'
 import { DiagnosticResponse, Severity } from '@/lib/types'
-import { Clock, RefreshCw, Cpu, PlusCircle, ShieldCheck, AlertTriangle, AlertCircle } from 'lucide-react'
+import { Clock, RefreshCw, Cpu, PlusCircle, AlertTriangle, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useSensorData } from '@/hooks/use-sensor-data'
@@ -71,6 +72,57 @@ const levelStyles: Record<DashboardLevel, { panel: string; chip: string }> = {
   DANGER: {
     panel: 'bg-red-50 text-red-900',
     chip: 'bg-red-100 text-red-800 border-red-200'
+  }
+}
+
+/**
+ * Parsea recomendación del backend a AlertSummary
+ * Extrae severidad, mensaje corto y acciones máximo 3
+ */
+function parseRecommendationToAlert(
+  recommendation: string
+): { severity: AlertSeverity; message: string; actions: string[] } {
+  const text = (recommendation || '').toLowerCase().trim()
+
+  // Detectar severidad por keywords
+  if (text.includes('crítico') || text.includes('peligro') || text.includes('riesgo alto')) {
+    return {
+      severity: 'CRITICAL',
+      message: 'Riesgo crítico para mascotas',
+      actions: [
+        'Evacuar el área inmediatamente',
+        'Ventilar todos los espacios',
+        'Revisar sistema de sensores'
+      ]
+    }
+  }
+
+  if (text.includes('alto') || text.includes('grave') || text.includes('evitar exposición')) {
+    return {
+      severity: 'DANGER',
+      message: 'Riesgo elevado para mascotas sensibles',
+      actions: ['Ventilar el área', 'Reducir tiempo de exposición', 'Monitorear a mascotas']
+    }
+  }
+
+  if (
+    text.includes('moderado') ||
+    text.includes('precaución') ||
+    text.includes('revisar') ||
+    text.includes('mejorar ventilación')
+  ) {
+    return {
+      severity: 'WARNING',
+      message: 'Riesgo leve para mascotas sensibles',
+      actions: ['Mejorar ventilación', 'Evitar exposición prolongada']
+    }
+  }
+
+  // Por defecto: safe
+  return {
+    severity: 'SAFE',
+    message: 'Condiciones óptimas para mascotas',
+    actions: ['Continuar con actividades normales', 'Mantener ventilación adecuada']
   }
 }
 
@@ -155,7 +207,9 @@ const SensorProgress = memo(function SensorProgress({ sensor }: { sensor: Dashbo
           <span className="text-slate-500">max {sensor.max} {sensor.unit}</span>
         </div>
         <div>
-          <p className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums leading-none">{sensor.value.toFixed(1)}</p>
+          <p className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums leading-none">
+            {sensor.value.toFixed(1)}
+          </p>
           <p className="text-xs text-slate-500 mt-1">{sensor.unit}</p>
         </div>
         <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
@@ -166,17 +220,21 @@ const SensorProgress = memo(function SensorProgress({ sensor }: { sensor: Dashbo
   )
 })
 
-export function DashboardView({ 
-  onNavigateToProfile,
-  onNavigateToRecommendations
-}: DashboardViewProps) {
+/**
+ * DASHBOARD REORGANIZADO EN 4 BLOQUES:
+ * A. Estado Global + AQI
+ * B. AlertSummary (reemplazo del texto largo)
+ * C. Métricas de Sensores
+ * D. Gráficas + Estado de mascotas
+ */
+export function DashboardView({ onNavigateToProfile, onNavigateToAlerts }: DashboardViewProps) {
   const { data, isLoading, isError, isActivated, refresh } = useSensorData()
   const { pets, isLoading: petsLoading } = usePets()
   const riskAssessments = usePetsRiskAssessment(pets, data ? [data] : undefined)
   const state = useMemo(() => deriveDashboardState(data), [data])
-  
+
   if (isLoading) return <DashboardSkeleton />
-  
+
   if (isError) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4">
@@ -204,7 +262,7 @@ export function DashboardView({
                 Tu sistema de monitoreo está listo. Solo falta vincular tu hardware para empezar.
               </p>
             </div>
-            <Button 
+            <Button
               className="h-14 px-8 text-base font-bold shadow-xl shadow-primary/20 rounded-2xl gap-2 active:scale-95 transition-transform"
               onClick={onNavigateToProfile}
             >
@@ -232,12 +290,12 @@ export function DashboardView({
 
   const style = levelStyles[state.global.level]
   const hasLiveTimestamp = Boolean(state.global.timestamp)
-  
-  // Mascotas en riesgo
   const petsAtRisk = riskAssessments.filter((a) => a.isAtRisk)
+  const alert = parseRecommendationToAlert(state.recommendation)
 
   return (
     <div className="p-4 space-y-4 animate-in slide-in-from-bottom-2 duration-500">
+      {/* ===== BLOQUE A: ESTADO GLOBAL ===== */}
       {state.hasInconsistentData && (
         <Card className="border border-amber-200 bg-amber-50">
           <CardContent className="p-3 flex items-start gap-2 text-amber-900">
@@ -249,23 +307,24 @@ export function DashboardView({
         </Card>
       )}
 
-      {/* Alerta de mascotas en riesgo */}
       {petsAtRisk.length > 0 && (
         <Card className="border border-orange-200 bg-orange-50">
           <CardContent className="p-3 flex items-start gap-2 text-orange-900">
             <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
             <div className="text-xs">
-              <p className="font-semibold">Mascotas en riesgo: {petsAtRisk.map(a => a.petName).join(', ')}</p>
+              <p className="font-semibold">Mascotas en riesgo: {petsAtRisk.map((a) => a.petName).join(', ')}</p>
               <p className="mt-1 opacity-80">Las condiciones ambientales pueden afectar a tus mascotas</p>
             </div>
           </CardContent>
         </Card>
       )}
 
-      <Card className={cn(
-        'relative overflow-hidden border-none shadow-2xl transition-all duration-1000 rounded-3xl',
-        style.panel
-      )}>
+      <Card
+        className={cn(
+          'relative overflow-hidden border-none shadow-2xl transition-all duration-1000 rounded-3xl',
+          style.panel
+        )}
+      >
         <div className="absolute -top-20 -right-16 h-48 w-48 rounded-full bg-white/30 blur-2xl" />
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
@@ -281,11 +340,9 @@ export function DashboardView({
           <p className="text-xs font-semibold opacity-70">
             {hasLiveTimestamp ? 'Conectado en tiempo real' : 'Esperando primera lectura valida'}
           </p>
-          <CardTitle className="text-2xl font-black tracking-tight leading-tight">
-            {state.diagnosis}
-          </CardTitle>
+          <CardTitle className="text-2xl font-black tracking-tight leading-tight">{state.diagnosis}</CardTitle>
         </CardHeader>
-        
+
         <CardContent>
           <div className="grid grid-cols-3 gap-1 sm:gap-3 py-4 place-items-center">
             <GaugeChart value={state.sensors[1].value} sensor="mq4" label="CH4 (MQ4)" />
@@ -299,40 +356,26 @@ export function DashboardView({
         </CardContent>
       </Card>
 
+      {/* ===== BLOQUE B: ALERTA/RECOMENDACIÓN (NUEVO DISEÑO) ===== */}
+      <AlertSummary
+        severity={alert.severity}
+        message={alert.message}
+        actions={alert.actions}
+      />
+
+      {/* ===== BLOQUE C: MÉTRICAS DE SENSORES ===== */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {state.sensors.map((sensor) => (
           <SensorProgress key={sensor.id} sensor={sensor} />
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-3">
-        <Card className="border-none bg-slate-900 text-white rounded-3xl p-1 shadow-lg">
-          <CardContent className="p-4 flex items-start gap-4">
-            <div className="p-3 bg-white/10 rounded-2xl border border-white/5">
-              <ShieldCheck size={24} className="text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-white/40 tracking-widest uppercase mb-1">Recomendación IA</p>
-              <p className="text-sm leading-relaxed font-medium">{state.recommendation}</p>
-              {onNavigateToRecommendations && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="mt-3"
-                  onClick={onNavigateToRecommendations}
-                >
-                  Ver recomendaciones
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Estado de mascotas */}
+      {/* ===== BLOQUE D: ESTADO DE MASCOTAS ===== */}
       {!petsLoading && pets && pets.length > 0 && (
-        <div className="space-y-2 mt-4 pt-4 border-t border-slate-200">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-600">Estado de mascotas</h3>
+        <div className="space-y-2 pt-2 border-t border-slate-200">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-600 px-1">
+            Estado de mascotas
+          </h3>
           <div className="space-y-2">
             {riskAssessments.slice(0, 2).map((assessment) => (
               <PetRiskIndicator
@@ -359,12 +402,12 @@ function DashboardSkeleton() {
   return (
     <div className="p-4 space-y-4">
       <Skeleton className="h-64 w-full rounded-[40px]" />
+      <Skeleton className="h-24 rounded-2xl" />
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <Skeleton className="h-24 rounded-2xl" />
         <Skeleton className="h-24 rounded-2xl" />
         <Skeleton className="h-24 rounded-2xl" />
       </div>
-      <Skeleton className="h-28 rounded-3xl" />
     </div>
   )
 }
