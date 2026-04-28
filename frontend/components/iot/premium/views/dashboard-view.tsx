@@ -6,10 +6,13 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '../status-indicator'
 import { GaugeChart } from '../gauge-chart'
 import { DiagnosticResponse, Severity } from '@/lib/types'
-import { Clock, RefreshCw, Cpu, PlusCircle, ShieldCheck, AlertTriangle } from 'lucide-react'
+import { Clock, RefreshCw, Cpu, PlusCircle, ShieldCheck, AlertTriangle, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useSensorData } from '@/hooks/use-sensor-data'
+import { usePets } from '@/hooks/use-pets'
+import { usePetsRiskAssessment } from '@/hooks/use-pet-risk'
+import { PetRiskIndicator } from '../pet-risk-indicator'
 
 interface DashboardViewProps {
   onNavigateToProfile?: () => void
@@ -168,6 +171,8 @@ export function DashboardView({
   onNavigateToRecommendations
 }: DashboardViewProps) {
   const { data, isLoading, isError, isActivated, refresh } = useSensorData()
+  const { pets, isLoading: petsLoading } = usePets()
+  const riskAssessments = usePetsRiskAssessment(pets, data ? [data] : undefined)
   const state = useMemo(() => deriveDashboardState(data), [data])
   
   if (isLoading) return <DashboardSkeleton />
@@ -227,6 +232,9 @@ export function DashboardView({
 
   const style = levelStyles[state.global.level]
   const hasLiveTimestamp = Boolean(state.global.timestamp)
+  
+  // Mascotas en riesgo
+  const petsAtRisk = riskAssessments.filter((a) => a.isAtRisk)
 
   return (
     <div className="p-4 space-y-4 animate-in slide-in-from-bottom-2 duration-500">
@@ -237,6 +245,19 @@ export function DashboardView({
             <p className="text-xs">
               Se detectaron datos inconsistentes. Se aplico saneamiento para evitar valores invalidos.
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Alerta de mascotas en riesgo */}
+      {petsAtRisk.length > 0 && (
+        <Card className="border border-orange-200 bg-orange-50">
+          <CardContent className="p-3 flex items-start gap-2 text-orange-900">
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <div className="text-xs">
+              <p className="font-semibold">Mascotas en riesgo: {petsAtRisk.map(a => a.petName).join(', ')}</p>
+              <p className="mt-1 opacity-80">Las condiciones ambientales pueden afectar a tus mascotas</p>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -307,6 +328,29 @@ export function DashboardView({
           </CardContent>
         </Card>
       </div>
+
+      {/* Estado de mascotas */}
+      {!petsLoading && pets && pets.length > 0 && (
+        <div className="space-y-2 mt-4 pt-4 border-t border-slate-200">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-600">Estado de mascotas</h3>
+          <div className="space-y-2">
+            {riskAssessments.slice(0, 2).map((assessment) => (
+              <PetRiskIndicator
+                key={assessment.petId}
+                pet={pets.find((p) => p.id === assessment.petId)!}
+                recentDiagnostics={data ? [data] : undefined}
+                compact={true}
+                showLabel={true}
+              />
+            ))}
+            {riskAssessments.length > 2 && (
+              <p className="text-xs text-slate-500 text-center py-2">
+                +{riskAssessments.length - 2} mascotas más
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

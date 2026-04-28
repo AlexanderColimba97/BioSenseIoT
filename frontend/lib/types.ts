@@ -142,3 +142,46 @@ export function getSensorStatus(value: number, sensorType: string): AirQualityLe
   if (value >= threshold.warning) return 'PRECAUCION';
   return 'NORMAL';
 }
+
+// ==================== NUEVOS TIPOS PARA MASCOTAS Y ALERTAS ====================
+
+/**
+ * Información del riesgo asociado a una mascota
+ * Derivada del diagnóstico actual
+ */
+export interface PetHealthRisk {
+  petId: number;
+  petName: string;
+  riskLevel: 'SAFE' | 'WARNING' | 'DANGER' | 'CRITICAL';
+  affectedSensors: ('MQ4' | 'MQ7' | 'MQ135')[];
+  timestamp: string;
+  reason: string;
+}
+
+/**
+ * Alerta enriquecida con contexto completo
+ * Resultado de integrar diagnósticos + mascotas + sensores
+ */
+export interface EnrichedAlert {
+  id: string;
+  severity: Severity; // 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+  message: string;
+  affectedPets: PetProfile[]; // Mascotas afectadas
+  sensorValues: Record<string, number>; // {mq4, mq7, mq135}
+  recommendations: string[];
+  timestamp: string;
+  resolved: boolean;
+  priority: number; // 1-5 para ordenamiento
+}
+
+/**
+ * Estado agregado del sistema
+ * Resumen de salud para dashboard
+ */
+export interface SystemStatus {
+  overallHealth: 'SAFE' | 'WARNING' | 'DANGER' | 'CRITICAL';
+  criticalAlerts: number;
+  warningAlerts: number;
+  affectedPets: PetProfile[];
+  lastUpdate: string;
+}
