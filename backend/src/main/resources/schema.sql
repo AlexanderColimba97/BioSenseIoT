@@ -4,12 +4,8 @@
 -- This script is idempotent para que pueda ejecutarse varias veces sin borrar datos.
 
 -- Users table
-CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    full_name VARCHAR(255),
     google_id VARCHAR(255) UNIQUE,
-    password VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -19,14 +15,12 @@ CREATE TABLE IF NOT EXISTS health_conditions (
     name VARCHAR(100) NOT NULL,
     description TEXT
 );
-
 -- Mapping users to their health conditions (many-to-many)
 CREATE TABLE IF NOT EXISTS user_health_mapping (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     condition_id INTEGER NOT NULL REFERENCES health_conditions(id) ON DELETE CASCADE,
     UNIQUE(user_id, condition_id)
-);
 
 -- Pets table
 CREATE TABLE IF NOT EXISTS pets (
@@ -34,7 +28,6 @@ CREATE TABLE IF NOT EXISTS pets (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     species VARCHAR(50),
-    breed VARCHAR(100),
     vulnerabilities TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -45,7 +38,6 @@ ADD COLUMN IF NOT EXISTS age_years INTEGER;
 
 ALTER TABLE IF EXISTS pets
 ADD COLUMN IF NOT EXISTS weight_kg DOUBLE PRECISION;
-
 ALTER TABLE IF EXISTS pets
 ADD COLUMN IF NOT EXISTS sensitivity_level VARCHAR(20) DEFAULT 'MEDIUM';
 
@@ -67,7 +59,6 @@ CREATE TABLE IF NOT EXISTS devices (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     mac_address VARCHAR(17) UNIQUE NOT NULL,
     name VARCHAR(100),
-    api_secret VARCHAR(255),
     last_seen TIMESTAMP WITH TIME ZONE
 );
 
@@ -77,7 +68,6 @@ CREATE TABLE IF NOT EXISTS user_devices (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     role VARCHAR(20) NOT NULL DEFAULT 'viewer',
-    shared_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_user_devices_user_device UNIQUE (user_id, device_id)
 );
 
@@ -87,7 +77,6 @@ ADD COLUMN IF NOT EXISTS name VARCHAR(100);
 
 ALTER TABLE IF EXISTS devices
 ADD COLUMN IF NOT EXISTS api_secret VARCHAR(255);
-
 ALTER TABLE IF EXISTS devices
 ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP WITH TIME ZONE;
 
@@ -103,7 +92,6 @@ SELECT d.user_id, d.id, 'owner'
 FROM devices d
 LEFT JOIN user_devices ud
         ON ud.user_id = d.user_id AND ud.device_id = d.id
-WHERE d.user_id IS NOT NULL
     AND ud.id IS NULL;
 
 -- Add api_secret column to existing databases (idempotent)
@@ -112,11 +100,7 @@ WHERE d.user_id IS NOT NULL
 
 -- Sensor readings table (Optimized for time-series)
 CREATE TABLE IF NOT EXISTS sensor_readings (
-    id BIGSERIAL PRIMARY KEY,
-    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
-    reading_id VARCHAR(255),
     mq4_value DOUBLE PRECISION NOT NULL,
-    mq7_value DOUBLE PRECISION NOT NULL,
     mq135_value DOUBLE PRECISION NOT NULL,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     UNIQUE(device_id, reading_id)
@@ -128,15 +112,12 @@ ALTER TABLE IF EXISTS sensor_readings
 ADD COLUMN IF NOT EXISTS reading_id VARCHAR(255);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_sensor_readings_device_reading_id
-ON sensor_readings(device_id, reading_id);
-
 -- AI Diagnostics results
 CREATE TABLE IF NOT EXISTS ai_diagnostics (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     reading_id BIGINT NOT NULL REFERENCES sensor_readings(id) ON DELETE CASCADE,
     diagnostic_text TEXT NOT NULL,
-    severity VARCHAR(20) NOT NULL,
     recommendation TEXT,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -159,7 +140,6 @@ CREATE TABLE IF NOT EXISTS ai_recommendations (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     diagnostic_id INTEGER NOT NULL REFERENCES ai_diagnostics(id) ON DELETE CASCADE,
     reading_id BIGINT NOT NULL REFERENCES sensor_readings(id) ON DELETE CASCADE,
-    pet_id INTEGER REFERENCES pets(id) ON DELETE SET NULL,
     ollama_prompt TEXT NOT NULL,
     ai_response TEXT NOT NULL,
     recommendation_title VARCHAR(255),
@@ -178,7 +158,6 @@ CREATE TABLE IF NOT EXISTS environment_profiles (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     profile_name VARCHAR(100) NOT NULL DEFAULT 'Principal',
-    space_type VARCHAR(30) NOT NULL DEFAULT 'APARTMENT',
     area_type VARCHAR(20) NOT NULL DEFAULT 'INDOOR',
     ventilation_level VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
     urban_context VARCHAR(20) NOT NULL DEFAULT 'URBAN',
@@ -192,7 +171,6 @@ CREATE TABLE IF NOT EXISTS device_environment_assignments (
     id SERIAL PRIMARY KEY,
     device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     environment_profile_id INTEGER NOT NULL REFERENCES environment_profiles(id) ON DELETE CASCADE,
-    assigned_from TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     assigned_to TIMESTAMP WITH TIME ZONE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
@@ -202,7 +180,6 @@ CREATE TABLE IF NOT EXISTS risk_assessments (
     id BIGSERIAL PRIMARY KEY,
     reading_id BIGINT NOT NULL REFERENCES sensor_readings(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     pet_id INTEGER REFERENCES pets(id) ON DELETE SET NULL,
     environment_profile_id INTEGER REFERENCES environment_profiles(id) ON DELETE SET NULL,
     risk_level VARCHAR(20) NOT NULL,
@@ -219,7 +196,6 @@ CREATE TABLE IF NOT EXISTS recommendation_events (
     id BIGSERIAL PRIMARY KEY,
     risk_assessment_id BIGINT NOT NULL REFERENCES risk_assessments(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    pet_id INTEGER REFERENCES pets(id) ON DELETE SET NULL,
     urgency VARCHAR(20) NOT NULL,
     title VARCHAR(160) NOT NULL,
     message TEXT NOT NULL,
@@ -232,7 +208,6 @@ CREATE TABLE IF NOT EXISTS exposure_history (
     id BIGSERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     pet_id INTEGER REFERENCES pets(id) ON DELETE SET NULL,
-    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     window_start TIMESTAMP WITH TIME ZONE NOT NULL,
     window_end TIMESTAMP WITH TIME ZONE NOT NULL,
     co_peak DOUBLE PRECISION,
@@ -248,7 +223,6 @@ CREATE INDEX IF NOT EXISTS idx_sensor_readings_device_id ON sensor_readings(devi
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_timestamp ON sensor_readings(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_device_timestamp ON sensor_readings(device_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_reading_id ON sensor_readings(reading_id) WHERE reading_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_ai_diagnostics_user_id ON ai_diagnostics(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_diagnostics_user_timestamp ON ai_diagnostics(user_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_diagnostics_reading_id ON ai_diagnostics(reading_id);
 CREATE INDEX IF NOT EXISTS idx_ai_diagnostics_risk_level ON ai_diagnostics(risk_level);
