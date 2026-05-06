@@ -1,13 +1,17 @@
 #!/bin/bash
 
 # Variables de entorno
-export KEYSTORE_PATH="/c/Users/alexi/Desktop/BioSenseIoT/biosense-final.keystore"
+export KEYSTORE_PATH="/c/Users/alexi/Desktop/BioSenseIoT/frontend/android/app/biosense-final.keystore"
 export KEYSTORE_PASSWORD="alexis2026"
 export KEY_ALIAS="biosense-alias"
 export KEY_PASSWORD="alexis2026"
 
 # Ir al frontend
 cd "$(dirname "$0")" || exit 1
+
+# Generar export web con URL de producción fija
+echo "Generando export web..."
+npm run export
 
 # Sincronizar Capacitor
 echo "Sincronizando Capacitor..."
