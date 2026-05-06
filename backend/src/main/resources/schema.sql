@@ -11,26 +11,20 @@
 
 -- Health conditions master table
 CREATE TABLE IF NOT EXISTS health_conditions (
-    id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    description TEXT
-);
 -- Mapping users to their health conditions (many-to-many)
-CREATE TABLE IF NOT EXISTS user_health_mapping (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     condition_id INTEGER NOT NULL REFERENCES health_conditions(id) ON DELETE CASCADE,
     UNIQUE(user_id, condition_id)
 
 -- Pets table
-CREATE TABLE IF NOT EXISTS pets (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     species VARCHAR(50),
     vulnerabilities TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
 
 -- Backward-compatible extensions for pets risk profiling
 ALTER TABLE IF EXISTS pets
@@ -38,7 +32,6 @@ ADD COLUMN IF NOT EXISTS age_years INTEGER;
 
 ALTER TABLE IF EXISTS pets
 ADD COLUMN IF NOT EXISTS weight_kg DOUBLE PRECISION;
-ALTER TABLE IF EXISTS pets
 ADD COLUMN IF NOT EXISTS sensitivity_level VARCHAR(20) DEFAULT 'MEDIUM';
 
 ALTER TABLE IF EXISTS pets
@@ -48,7 +41,6 @@ ALTER TABLE IF EXISTS pets
 ADD COLUMN IF NOT EXISTS activity_level VARCHAR(20) DEFAULT 'MEDIUM';
 
 ALTER TABLE IF EXISTS pets
-ADD COLUMN IF NOT EXISTS health_risk_level VARCHAR(20) DEFAULT 'MEDIUM';
 
 ALTER TABLE IF EXISTS pets
 ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
@@ -70,7 +62,6 @@ CREATE TABLE IF NOT EXISTS user_devices (
     role VARCHAR(20) NOT NULL DEFAULT 'viewer',
     CONSTRAINT uq_user_devices_user_device UNIQUE (user_id, device_id)
 );
-
 -- Backward compatibility for legacy devices table variants.
 ALTER TABLE IF EXISTS devices
 ADD COLUMN IF NOT EXISTS name VARCHAR(100);
@@ -79,7 +70,6 @@ ALTER TABLE IF EXISTS devices
 ADD COLUMN IF NOT EXISTS api_secret VARCHAR(255);
 ALTER TABLE IF EXISTS devices
 ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP WITH TIME ZONE;
-
 ALTER TABLE IF EXISTS user_devices
 ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'viewer';
 
@@ -88,7 +78,6 @@ ADD COLUMN IF NOT EXISTS shared_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIME
 
 -- Backfill owner access for already-linked legacy devices
 INSERT INTO user_devices (user_id, device_id, role)
-SELECT d.user_id, d.id, 'owner'
 FROM devices d
 LEFT JOIN user_devices ud
         ON ud.user_id = d.user_id AND ud.device_id = d.id
@@ -98,7 +87,6 @@ LEFT JOIN user_devices ud
 -- ALTERNATIVA: Si el error persiste, comenta la siguiente línea y ejecuta manualmente en pgAdmin
 -- Para evitar problemas de parsing, se usa una sintaxis más simple:
 
--- Sensor readings table (Optimized for time-series)
 CREATE TABLE IF NOT EXISTS sensor_readings (
     mq4_value DOUBLE PRECISION NOT NULL,
     mq135_value DOUBLE PRECISION NOT NULL,
@@ -106,7 +94,6 @@ CREATE TABLE IF NOT EXISTS sensor_readings (
     UNIQUE(device_id, reading_id)
 );
 
--- Backward compatibility: existing deployments may already have sensor_readings
 -- without the new deduplication column/constraint.
 ALTER TABLE IF EXISTS sensor_readings
 ADD COLUMN IF NOT EXISTS reading_id VARCHAR(255);
@@ -118,7 +105,6 @@ CREATE TABLE IF NOT EXISTS ai_diagnostics (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     reading_id BIGINT NOT NULL REFERENCES sensor_readings(id) ON DELETE CASCADE,
     diagnostic_text TEXT NOT NULL,
-    recommendation TEXT,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -140,7 +126,6 @@ CREATE TABLE IF NOT EXISTS ai_recommendations (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     diagnostic_id INTEGER NOT NULL REFERENCES ai_diagnostics(id) ON DELETE CASCADE,
     reading_id BIGINT NOT NULL REFERENCES sensor_readings(id) ON DELETE CASCADE,
-    ollama_prompt TEXT NOT NULL,
     ai_response TEXT NOT NULL,
     recommendation_title VARCHAR(255),
     recommendation_text TEXT,
@@ -158,7 +143,6 @@ CREATE TABLE IF NOT EXISTS environment_profiles (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     profile_name VARCHAR(100) NOT NULL DEFAULT 'Principal',
-    area_type VARCHAR(20) NOT NULL DEFAULT 'INDOOR',
     ventilation_level VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
     urban_context VARCHAR(20) NOT NULL DEFAULT 'URBAN',
     notes TEXT,
@@ -171,7 +155,6 @@ CREATE TABLE IF NOT EXISTS device_environment_assignments (
     id SERIAL PRIMARY KEY,
     device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     environment_profile_id INTEGER NOT NULL REFERENCES environment_profiles(id) ON DELETE CASCADE,
-    assigned_to TIMESTAMP WITH TIME ZONE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
@@ -180,7 +163,6 @@ CREATE TABLE IF NOT EXISTS risk_assessments (
     id BIGSERIAL PRIMARY KEY,
     reading_id BIGINT NOT NULL REFERENCES sensor_readings(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    pet_id INTEGER REFERENCES pets(id) ON DELETE SET NULL,
     environment_profile_id INTEGER REFERENCES environment_profiles(id) ON DELETE SET NULL,
     risk_level VARCHAR(20) NOT NULL,
     risk_score DOUBLE PRECISION NOT NULL,
@@ -196,7 +178,6 @@ CREATE TABLE IF NOT EXISTS recommendation_events (
     id BIGSERIAL PRIMARY KEY,
     risk_assessment_id BIGINT NOT NULL REFERENCES risk_assessments(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    urgency VARCHAR(20) NOT NULL,
     title VARCHAR(160) NOT NULL,
     message TEXT NOT NULL,
     actions_json TEXT,
