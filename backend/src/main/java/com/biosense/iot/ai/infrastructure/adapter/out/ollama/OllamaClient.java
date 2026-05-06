@@ -2,6 +2,7 @@ package com.biosense.iot.ai.infrastructure.adapter.out.ollama;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.biosense.iot.ai.domain.port.out.OllamaClientPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,7 +23,7 @@ import java.util.regex.Pattern;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class OllamaClient {
+public class OllamaClient implements OllamaClientPort {
 
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
@@ -37,21 +38,22 @@ public class OllamaClient {
     private long timeoutMs;
 
     /**
-     * Genera una recomendación contextual usando Ollama de forma reactiva y no-bloqueante.
+     * Genera una recomendación contextual usando Ollama de forma reactiva y
+     * no-bloqueante.
      * 
      * @param prompt Prompt contextualizado con datos del sensor, mascota y entorno
      * @return Mono con la recomendación generada, o error si Ollama falla
      */
     public Mono<OllamaResponse> generateRecommendation(String prompt) {
         log.info("Iniciando generación de recomendación con Ollama. Modelo: {}", ollamaModel);
-        
+
         Instant startTime = Instant.now();
-        
+
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", ollamaModel);
         requestBody.put("prompt", prompt);
         requestBody.put("stream", false);
-        
+
         return webClient.post()
                 .uri(ollamaBaseUrl + "/api/generate")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -64,22 +66,28 @@ public class OllamaClient {
                 .doOnError(e -> log.error("Error en OllamaClient: {}", e.getMessage(), e));
     }
 
+    @Override
+    public Mono<String> generate(String prompt) {
+        return generateRecommendation(prompt)
+                .map(OllamaResponse::getRawResponse);
+    }
+
     /**
      * Parsea la respuesta de Ollama extrayendo JSON y limpiando formato markdown
      */
     private Mono<OllamaResponse> parseOllamaResponse(String rawResponse, Instant startTime) {
         try {
-            log.debug("Respuesta cruda de Ollama (primeros 500 chars): {}", 
+            log.debug("Respuesta cruda de Ollama (primeros 500 chars): {}",
                     rawResponse.substring(0, Math.min(500, rawResponse.length())));
-            
+
             JsonNode rootNode = objectMapper.readTree(rawResponse);
             String responseText = rootNode.get("response").asText("");
-            
+
             long processingTimeMs = Duration.between(startTime, Instant.now()).toMillis();
-            
+
             // Limpiar markdown code blocks
             String cleanedResponse = cleanMarkdownJson(responseText);
-            
+
             // Intentar parsear como JSON
             try {
                 JsonNode jsonRecommendation = objectMapper.readTree(cleanedResponse);
@@ -118,11 +126,11 @@ public class OllamaClient {
         // Buscar primer { y último }
         int firstBrace = text.indexOf('{');
         int lastBrace = text.lastIndexOf('}');
-        
+
         if (firstBrace != -1 && lastBrace != -1 && firstBrace < lastBrace) {
             return text.substring(firstBrace, lastBrace + 1);
         }
-        
+
         // Si no hay braces, limpiar markdown
         text = text.replaceAll("```json\\s*", "").replaceAll("```\\s*", "");
         return text;
@@ -133,7 +141,7 @@ public class OllamaClient {
      */
     private Mono<OllamaResponse> handleOllamaError(Throwable error, Instant startTime) {
         long processingTimeMs = Duration.between(startTime, Instant.now()).toMillis();
-        
+
         if (error instanceof java.util.concurrent.TimeoutException) {
             log.warn("Timeout en Ollama después de {}ms", timeoutMs);
             return Mono.just(OllamaResponse.builder()
@@ -147,7 +155,7 @@ public class OllamaClient {
                     .errorMessage("Timeout después de " + timeoutMs + "ms")
                     .build());
         }
-        
+
         if (error instanceof WebClientResponseException) {
             WebClientResponseException wcex = (WebClientResponseException) error;
             log.error("Error HTTP de Ollama: {} - {}", wcex.getStatusCode(), wcex.getResponseBodyAsString());
@@ -162,7 +170,7 @@ public class OllamaClient {
                     .errorMessage("Error HTTP: " + wcex.getStatusCode())
                     .build());
         }
-        
+
         log.error("Error inesperado en Ollama: {}", error.getClass().getSimpleName(), error);
         return Mono.just(OllamaResponse.builder()
                 .rawResponse("")
