@@ -185,3 +185,29 @@ export interface SystemStatus {
   affectedPets: PetProfile[];
   lastUpdate: string;
 }
+
+// ==================== TIPOS PARA RECOMENDACIONES IA (OLLAMA) ====================
+
+/**
+ * Recomendación IA generada por Ollama en el backend
+ * Se obtiene vía GET /api/v2/ai/ollama/latest
+ * Solo disponible cuando severity === "DANGER"
+ */
+export interface AiRecommendation {
+  id: number;
+  title: string;                   // recommendation_title del backend
+  text: string;                    // recommendation_text del backend
+  actions: string;                 // JSON string → parsear a array
+  confidence: number;              // 0.0 - 1.0
+  processingTimeMs: number;
+  status: 'SUCCESS' | 'TIMEOUT' | 'ERROR';
+  createdAt: string;               // ISO timestamp
+}
+
+/**
+ * Recomendación IA con actions ya parseadas
+ * Facilita el rendering en componentes
+ */
+export interface AiRecommendationParsed extends AiRecommendation {
+  actionsList: string[];           // actions parseado de JSON
+}

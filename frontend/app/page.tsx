@@ -12,6 +12,7 @@ import { AnalysisView } from "@/components/iot/premium/views/analysis-view"
 import { RecommendationsView } from "@/components/iot/premium/views/recommendations-view"
 import { ProfileView } from "@/components/iot/premium/views/profile-view"
 import { useSensorData } from "@/hooks/use-sensor-data"
+import { useLatestAlert } from "@/hooks/use-latest-alert"
 import { AuthService } from "@/lib/auth-service"
 
 type ViewType = "dashboard" | "monitoreo" | "analisis" | "alertas" | "recomendaciones" | "perfil"
@@ -22,9 +23,10 @@ export default function AirQualityApp() {
   const [currentView, setCurrentView] = useState<ViewType>("dashboard")
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { data } = useSensorData()
+  const { alert: latestAlert } = useLatestAlert({ refreshInterval: 4000 })
 
   // Derive alert count from real diagnostic severity
-  const alertCount = data && (data.severity === 'HIGH' || data.severity === 'CRITICAL') ? 1 : 0
+  const alertCount = latestAlert && ['HIGH', 'CRITICAL', 'DANGER'].includes(String(latestAlert.severity || '').toUpperCase()) ? 1 : 0
 
   useEffect(() => {
     setMounted(true)

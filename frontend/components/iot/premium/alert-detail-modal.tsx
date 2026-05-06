@@ -1,38 +1,28 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { X, MapPin, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePets } from '@/hooks/use-pets'
+import { useAlertIntelligence } from '@/hooks/use-alert-intelligence'
+import { useAiRecommendation } from '@/hooks/use-ai-recommendation'
+import { DiagnosticResponse } from '@/lib/types'
 
 interface AlertDetailModalProps {
   isOpen: boolean
   onClose: () => void
   alert: any
+  diagnostic?: DiagnosticResponse | null
+  deviceId?: number | null
 }
 
-export function AlertDetailModal({ isOpen, onClose, alert }: AlertDetailModalProps) {
+export function AlertDetailModal({ isOpen, onClose, alert, diagnostic = null, deviceId = null }: AlertDetailModalProps) {
   const { pets } = usePets()
-  const [petAnalysis, setPetAnalysis] = useState<string | null>(null)
-  const [petLinked, setPetLinked] = useState<any | null>(null)
-
-  useEffect(() => {
-    if (!isOpen || !alert) return
-
-    // check if user has pets - pick first for demo
-    if (pets && pets.length > 0) {
-      setPetLinked(pets[0])
-      // call backend analysis endpoint
-      fetch(`/api/v2/analytics/pet-risk?gas=${encodeURIComponent(alert.gas || 'co')}&petType=${encodeURIComponent(pets[0].type || 'dog')}`)
-        .then((r) => r.json())
-        .then((json) => setPetAnalysis(json?.analysis || null))
-        .catch(() => setPetAnalysis(null))
-    } else {
-      setPetLinked(null)
-      setPetAnalysis(null)
-    }
-  }, [isOpen, alert, pets])
+  const intelligence = useAlertIntelligence({ alert, diagnostic })
+  const aiRecommendation = useAiRecommendation({
+    deviceId,
+    enabled: isOpen && !!alert
+  })
 
   if (!isOpen || !alert) return null
 
@@ -84,28 +74,33 @@ export function AlertDetailModal({ isOpen, onClose, alert }: AlertDetailModalPro
 
         {/* Section 2: Pet integration */}
         <section className="mb-6">
-          <h3 className="font-semibold mb-2">Impacto en mascotas</h3>
+          <h3 className="font-semibold mb-2">Impacto en mascotas y usuario</h3>
 
-          {petLinked ? (
+          {intelligence.report ? (
             <div className="p-4 border rounded-lg bg-slate-50">
               <div className="flex items-center gap-3 mb-2">
-                <div className="h-10 w-10 rounded-full bg-white border flex items-center justify-center">🐦</div>
+                <div className="h-10 w-10 rounded-full bg-white border flex items-center justify-center">{pets.length > 0 ? '🐾' : '👤'}</div>
                 <div>
-                  <p className="font-semibold">Riesgo para tu {petLinked.type} ({petLinked.name})</p>
-                  <p className="text-xs text-slate-500">Análisis específico</p>
+                  <p className="font-semibold">{intelligence.report.userName}</p>
+                  <p className="text-xs text-slate-500">{intelligence.report.hasPets ? intelligence.report.petSummary : 'Sin mascotas registradas'}</p>
                 </div>
               </div>
 
               <div className="text-sm text-slate-700 leading-relaxed">
-                {petAnalysis ? (
-                  <p>{petAnalysis}</p>
-                ) : (
-                  <p>
-                    Las aves son extremadamente sensibles a gases y vapores; sus sistemas respiratorios son
-                    muy eficientes y pequeños cambios en la calidad del aire pueden ser letales. Considera
-                    mover a tu ave a una zona ventilada y consultar con un veterinario si muestra signos.
-                  </p>
-                )}
+                <p>{intelligence.report.analysis}</p>
+                <p className="mt-3 text-xs uppercase tracking-[0.2em] text-slate-500">Gas detectado</p>
+                <p className="font-semibold text-slate-900">{intelligence.report.gasLabel}</p>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Recomendaciones IA</p>
+                <ul className="space-y-2 text-sm">
+                  {intelligence.report.recommendations.map((recommendation) => (
+                    <li key={recommendation} className="rounded-md bg-white border px-3 py-2">
+                      {recommendation}
+                    </li>
+                  ))}
+                </ul>
               </div>
             </div>
           ) : (
@@ -114,6 +109,30 @@ export function AlertDetailModal({ isOpen, onClose, alert }: AlertDetailModalPro
               <p className="text-slate-600">Completa el perfil de tu animal en Configuración para obtener análisis específicos.</p>
             </div>
           )}
+
+          <div className="mt-4 p-4 border rounded-lg bg-slate-50">
+            <h4 className="font-semibold mb-2">Recomendacion contextual (Ollama)</h4>
+            {aiRecommendation.isLoading ? (
+              <p className="text-sm text-slate-600">Analizando alerta con IA...</p>
+            ) : aiRecommendation.recommendation ? (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-700">{aiRecommendation.recommendation.summary}</p>
+                {aiRecommendation.recommendation.suggestions?.length > 0 && (
+                  <ul className="space-y-2 text-sm">
+                    {aiRecommendation.recommendation.suggestions.map((suggestion) => (
+                      <li key={suggestion} className="rounded-md bg-white border px-3 py-2">
+                        {suggestion}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-600">
+                No se pudo obtener una recomendacion remota. Mostrando analisis local de respaldo.
+              </p>
+            )}
+          </div>
         </section>
 
         {/* Section 3: Alert history (light) */}

@@ -18,17 +18,17 @@ public class R2dbcDiagnosticRepositoryAdapter implements DiagnosticRepositoryPor
     @Override
     public Mono<DiagnosticDomain> findLatestByUserId(Integer userId) {
         return databaseClient.sql("SELECT ad.*, sr.mq4_value, sr.mq7_value, sr.mq135_value FROM ai_diagnostics ad " +
-                         "JOIN sensor_readings sr ON ad.reading_id = sr.id " +
-                         "WHERE ad.user_id = :userId " +
-                         "ORDER BY ad.timestamp DESC LIMIT 1")
+                "JOIN sensor_readings sr ON ad.reading_id = sr.id " +
+                "WHERE ad.user_id = :userId " +
+                "ORDER BY ad.timestamp DESC LIMIT 1")
                 .bind("userId", userId)
                 .map(row -> DiagnosticDomain.builder()
                         .diagnosticText(row.get("diagnostic_text", String.class))
                         .severity(row.get("severity", String.class))
-                    .riskLevel(row.get("risk_level", String.class))
-                    .confidence(row.get("confidence", Double.class))
-                    .affectedPet(row.get("affected_pet", String.class))
-                    .environmentContext(row.get("environment_context", String.class))
+                        .riskLevel(row.get("risk_level", String.class))
+                        .confidence(row.get("confidence", Double.class))
+                        .affectedPet(row.get("affected_pet", String.class))
+                        .environmentContext(row.get("environment_context", String.class))
                         .recommendation(row.get("recommendation", String.class))
                         .timestamp(row.get("timestamp", Instant.class))
                         .mq4(row.get("mq4_value", Double.class))
@@ -47,12 +47,24 @@ public class R2dbcDiagnosticRepositoryAdapter implements DiagnosticRepositoryPor
     }
 
     @Override
-    public Mono<Void> save(Integer userId, Long readingId, String severity, String riskLevel, Double confidence,
-                           String affectedPet, String environmentContext, String diagnosticText,
-                           String recommendation) {
+    public Mono<Integer> findLatestDiagnosticIdByUserAndReading(Integer userId, Long readingId) {
         return databaseClient.sql(
-                "INSERT INTO ai_diagnostics (user_id, reading_id, diagnostic_text, severity, risk_level, confidence, affected_pet, environment_context, recommendation, timestamp) " +
-                "VALUES (:userId, :readingId, :diagnosticText, :severity, :riskLevel, :confidence, :affectedPet, :environmentContext, :recommendation, NOW())")
+                "SELECT id FROM ai_diagnostics WHERE user_id = :userId AND reading_id = :readingId " +
+                        "ORDER BY timestamp DESC LIMIT 1")
+                .bind("userId", userId)
+                .bind("readingId", readingId)
+                .map(row -> row.get("id", Integer.class))
+                .first();
+    }
+
+    @Override
+    public Mono<Void> save(Integer userId, Long readingId, String severity, String riskLevel, Double confidence,
+            String affectedPet, String environmentContext, String diagnosticText,
+            String recommendation) {
+        return databaseClient.sql(
+                "INSERT INTO ai_diagnostics (user_id, reading_id, diagnostic_text, severity, risk_level, confidence, affected_pet, environment_context, recommendation, timestamp) "
+                        +
+                        "VALUES (:userId, :readingId, :diagnosticText, :severity, :riskLevel, :confidence, :affectedPet, :environmentContext, :recommendation, NOW())")
                 .bind("userId", userId)
                 .bind("readingId", readingId)
                 .bind("diagnosticText", diagnosticText)

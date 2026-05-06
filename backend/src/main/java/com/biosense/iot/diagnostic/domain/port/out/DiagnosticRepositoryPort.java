@@ -5,7 +5,11 @@ import reactor.core.publisher.Mono;
 
 public interface DiagnosticRepositoryPort {
     Mono<DiagnosticDomain> findLatestByUserId(Integer userId);
+
     Mono<Integer> findUserIdByEmail(String email);
+
+    Mono<Integer> findLatestDiagnosticIdByUserAndReading(Integer userId, Long readingId);
+
     Mono<Void> save(Integer userId, Long readingId, String severity, String riskLevel, Double confidence,
-                    String affectedPet, String environmentContext, String diagnosticText, String recommendation);
+            String affectedPet, String environmentContext, String diagnosticText, String recommendation);
 }

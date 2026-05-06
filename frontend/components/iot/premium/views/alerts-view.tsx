@@ -11,7 +11,11 @@ import { Badge } from "@/components/ui/badge"
 import { useLatestAlert } from "@/hooks/use-latest-alert"
 import { ActiveAlertCard } from "../active-alert-card"
 import { AlertDetailModal } from "../alert-detail-modal"
+import { useAlertIntelligence } from "@/hooks/use-alert-intelligence"
 import useSWR from 'swr'
+import { AuthService } from "@/lib/auth-service"
+import { buildApiV2Url } from "@/lib/api-config"
+import { getUserDevices } from "@/lib/device-service"
 
 const activeAlerts = [
   {
@@ -79,13 +83,53 @@ export function AlertsView() {
   const selectedPet = pets?.find((p) => p.id === selectedPetId)
   const selectedPetRisk = selectedPet ? usePetRisk(selectedPet, latestDiagnostic ? [latestDiagnostic] : undefined) : null
 
-  // latest alert from backend (polling every 5s)
-  const { alert: latestAlert, isLoading: latestLoading, isError, mutate: mutateLatest } = useLatestAlert({ refreshInterval: 5000 })
+  // latest alert from backend (polling every 4s)
+  const { alert: latestAlert, isLoading: latestLoading, isError, mutate: mutateLatest } = useLatestAlert({ refreshInterval: 4000 })
+
+  const historyKey = AuthService.isAuthenticated() ? '/api/v2/alerts?limit=10' : null
+
+  const historyFetcher = async (url: string) => {
+    const token = await AuthService.getValidToken()
+    const response = await fetch(buildApiV2Url(url.replace(/^\/api\/v2/, '')), {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+
+    if (response.status === 204 || response.status === 404) {
+      return []
+    }
+
+    if (!response.ok) {
+      throw new Error(`Error del servidor: ${response.status}`)
+    }
+
+    return response.json()
+  }
 
   // lightweight history fetch (separate endpoint) - polled
-  const { data: history } = useSWR('/api/v2/alerts?limit=10', (url) => fetch(url).then(r => r.json()), { refreshInterval: 7000, dedupingInterval: 4000 })
+  const { data: history, isLoading: historyLoading, error: historyError } = useSWR(historyKey, historyFetcher, {
+    refreshInterval: 8000,
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    refreshWhenHidden: false,
+    refreshWhenOffline: false,
+    dedupingInterval: 3000
+  })
 
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedAlert, setSelectedAlert] = useState<any | null>(null)
+
+  const { data: userDevices } = useSWR(
+    AuthService.isAuthenticated() ? '/api/v2/devices/my-devices' : null,
+    getUserDevices,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 10000
+    }
+  )
+
+  const selectedDeviceId = userDevices?.[0]?.id ?? null
 
   const activeAlert = useMemo(() => {
     if (!latestAlert) return null
@@ -95,6 +139,11 @@ export function AlertsView() {
     }
     return null
   }, [latestAlert])
+
+  const alertIntelligence = useAlertIntelligence({
+    alert: activeAlert || latestAlert,
+    diagnostic: latestDiagnostic
+  })
 
   return (
     <div className="pb-24">
@@ -138,9 +187,62 @@ export function AlertsView() {
 
       {/* Active Alerts - show single most relevant active alert */}
       <div className="px-4">
-        <h2 className="font-semibold text-lg mb-3">Alertas Activas</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-semibold text-lg">Alertas Activas</h2>
+          <span className="text-[10px] uppercase tracking-[0.2em] text-slate-500">En vivo</span>
+        </div>
         <div className="space-y-3">
-          {activeAlert ? (
+          {alertIntelligence.report && (activeAlert || alertIntelligence.report.severity === 'HIGH' || alertIntelligence.report.severity === 'CRITICAL') && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-amber-700">Notificación IA</p>
+                  <h3 className="font-semibold text-slate-900">{alertIntelligence.report.summary}</h3>
+                  <p className="text-sm text-slate-700">{alertIntelligence.report.analysis}</p>
+                </div>
+                <Badge className="bg-amber-500 text-white">{alertIntelligence.report.gasLabel}</Badge>
+              </div>
+
+              <div className="mt-4 grid gap-2 text-xs text-slate-700 sm:grid-cols-3">
+                <div className="rounded-xl bg-white/80 p-3 border border-amber-100">
+                  <p className="font-semibold text-slate-900">Usuario</p>
+                  <p>{alertIntelligence.report.userName}</p>
+                  <p className="text-slate-500">{alertIntelligence.report.userEmail}</p>
+                </div>
+                <div className="rounded-xl bg-white/80 p-3 border border-amber-100">
+                  <p className="font-semibold text-slate-900">Mascotas</p>
+                  <p>{alertIntelligence.report.petSummary}</p>
+                  <p className="text-slate-500">{alertIntelligence.report.hasPets ? 'Registradas en el perfil' : 'Sin mascotas registradas'}</p>
+                </div>
+                <div className="rounded-xl bg-white/80 p-3 border border-amber-100">
+                  <p className="font-semibold text-slate-900">Gas elevado</p>
+                  <p>{alertIntelligence.report.gasLabel}</p>
+                  <p className="text-slate-500">Requiere ventilación y seguimiento</p>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Recomendaciones IA</p>
+                <ul className="space-y-2 text-sm text-slate-700">
+                  {alertIntelligence.report.recommendations.map((recommendation) => (
+                    <li key={recommendation} className="rounded-xl bg-white/80 border border-amber-100 px-3 py-2">
+                      {recommendation}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {latestLoading ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+              Sincronizando alertas activas...
+            </div>
+          ) : isError ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              No pudimos actualizar las alertas activas.
+            </div>
+          ) : activeAlert ? (
             <ActiveAlertCard
               id={activeAlert.id}
               title={activeAlert.title || activeAlert.message || 'Alerta'}
@@ -149,7 +251,10 @@ export function AlertsView() {
               location={activeAlert.location}
               time={activeAlert.time}
               severity={(activeAlert.severity || '').toString().toUpperCase()}
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => {
+                setSelectedAlert(activeAlert)
+                setIsModalOpen(true)
+              }}
             />
           ) : (
             <div className="p-4">
@@ -191,7 +296,11 @@ export function AlertsView() {
         </div>
 
         <div className="bg-card rounded-2xl border border-border/50 p-4 animate-fade-in-up" style={{ animationDelay: '200ms' }}>
-          {(history && history.length > 0) ? (
+          {historyLoading ? (
+            <p className="text-sm text-slate-500">Cargando historial...</p>
+          ) : historyError ? (
+            <p className="text-sm text-red-600">No se pudo cargar el historial.</p>
+          ) : (history && history.length > 0) ? (
             history.map((h: any, index: number) => (
               <AlertCard
                 key={h.id}
@@ -203,6 +312,10 @@ export function AlertsView() {
                 severity={h.severity || 'baja'}
                 resolved={h.resolved}
                 delay={200 + index * 50}
+                onClick={() => {
+                  setSelectedAlert(h)
+                  setIsModalOpen(true)
+                }}
               />
             ))
           ) : (
@@ -211,7 +324,13 @@ export function AlertsView() {
         </div>
       </div>
 
-      <AlertDetailModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} alert={activeAlert || latestAlert} />
+      <AlertDetailModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        alert={selectedAlert || activeAlert || latestAlert}
+        diagnostic={latestDiagnostic}
+        deviceId={selectedDeviceId}
+      />
     </div>
   )
 }
