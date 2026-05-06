@@ -1,49 +1,45 @@
-﻿-- BioSense IoT - Safe Initialization Script
-
--- 1. CREATE TABLES IF THEY DO NOT EXIST
--- This script is idempotent para que pueda ejecutarse varias veces sin borrar datos.
+-- BioSense IoT - Safe Initialization Script
 
 -- Users table
+CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     google_id VARCHAR(255) UNIQUE,
+    email VARCHAR(255) UNIQUE,
+    full_name VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Health conditions master table
 CREATE TABLE IF NOT EXISTS health_conditions (
+    id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
+    description TEXT
+);
+
 -- Mapping users to their health conditions (many-to-many)
+CREATE TABLE IF NOT EXISTS user_health_mapping (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     condition_id INTEGER NOT NULL REFERENCES health_conditions(id) ON DELETE CASCADE,
     UNIQUE(user_id, condition_id)
+);
 
 -- Pets table
+CREATE TABLE IF NOT EXISTS pets (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     species VARCHAR(50),
     vulnerabilities TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-
--- Backward-compatible extensions for pets risk profiling
-ALTER TABLE IF EXISTS pets
-ADD COLUMN IF NOT EXISTS age_years INTEGER;
-
-ALTER TABLE IF EXISTS pets
-ADD COLUMN IF NOT EXISTS weight_kg DOUBLE PRECISION;
-ADD COLUMN IF NOT EXISTS sensitivity_level VARCHAR(20) DEFAULT 'MEDIUM';
-
-ALTER TABLE IF EXISTS pets
-ADD COLUMN IF NOT EXISTS respiratory_risk VARCHAR(20) DEFAULT 'NORMAL';
-
-ALTER TABLE IF EXISTS pets
-ADD COLUMN IF NOT EXISTS activity_level VARCHAR(20) DEFAULT 'MEDIUM';
-
-ALTER TABLE IF EXISTS pets
-
-ALTER TABLE IF EXISTS pets
-ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+    age_years INTEGER,
+    weight_kg DOUBLE PRECISION,
+    sensitivity_level VARCHAR(20) DEFAULT 'MEDIUM',
+    respiratory_risk VARCHAR(20) DEFAULT 'NORMAL',
+    activity_level VARCHAR(20) DEFAULT 'MEDIUM',
+    health_risk_level VARCHAR(20) DEFAULT 'MEDIUM',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
 -- Devices table
 CREATE TABLE IF NOT EXISTS devices (
@@ -51,6 +47,7 @@ CREATE TABLE IF NOT EXISTS devices (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     mac_address VARCHAR(17) UNIQUE NOT NULL,
     name VARCHAR(100),
+    api_secret VARCHAR(255),
     last_seen TIMESTAMP WITH TIME ZONE
 );
 
@@ -60,65 +57,33 @@ CREATE TABLE IF NOT EXISTS user_devices (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     role VARCHAR(20) NOT NULL DEFAULT 'viewer',
+    shared_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_user_devices_user_device UNIQUE (user_id, device_id)
 );
--- Backward compatibility for legacy devices table variants.
-ALTER TABLE IF EXISTS devices
-ADD COLUMN IF NOT EXISTS name VARCHAR(100);
 
-ALTER TABLE IF EXISTS devices
-ADD COLUMN IF NOT EXISTS api_secret VARCHAR(255);
-ALTER TABLE IF EXISTS devices
-ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP WITH TIME ZONE;
-ALTER TABLE IF EXISTS user_devices
-ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'viewer';
-
-ALTER TABLE IF EXISTS user_devices
-ADD COLUMN IF NOT EXISTS shared_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
-
--- Backfill owner access for already-linked legacy devices
-INSERT INTO user_devices (user_id, device_id, role)
-FROM devices d
-LEFT JOIN user_devices ud
-        ON ud.user_id = d.user_id AND ud.device_id = d.id
-    AND ud.id IS NULL;
-
--- Add api_secret column to existing databases (idempotent)
--- ALTERNATIVA: Si el error persiste, comenta la siguiente línea y ejecuta manualmente en pgAdmin
--- Para evitar problemas de parsing, se usa una sintaxis más simple:
-
+-- Sensor readings table (Optimized for time-series)
 CREATE TABLE IF NOT EXISTS sensor_readings (
-    mq4_value DOUBLE PRECISION NOT NULL,
-    mq135_value DOUBLE PRECISION NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    mq4_value DOUBLE PRECISION,
+    mq135_value DOUBLE PRECISION,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    UNIQUE(device_id, reading_id)
+    reading_id VARCHAR(255)
 );
 
--- without the new deduplication column/constraint.
-ALTER TABLE IF EXISTS sensor_readings
-ADD COLUMN IF NOT EXISTS reading_id VARCHAR(255);
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_sensor_readings_device_reading_id
 -- AI Diagnostics results
 CREATE TABLE IF NOT EXISTS ai_diagnostics (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     reading_id BIGINT NOT NULL REFERENCES sensor_readings(id) ON DELETE CASCADE,
     diagnostic_text TEXT NOT NULL,
+    recommendation TEXT,
+    risk_level VARCHAR(20),
+    confidence DOUBLE PRECISION,
+    affected_pet VARCHAR(120),
+    environment_context VARCHAR(160),
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
-ALTER TABLE IF EXISTS ai_diagnostics
-ADD COLUMN IF NOT EXISTS risk_level VARCHAR(20);
-
-ALTER TABLE IF EXISTS ai_diagnostics
-ADD COLUMN IF NOT EXISTS confidence DOUBLE PRECISION;
-
-ALTER TABLE IF EXISTS ai_diagnostics
-ADD COLUMN IF NOT EXISTS affected_pet VARCHAR(120);
-
-ALTER TABLE IF EXISTS ai_diagnostics
-ADD COLUMN IF NOT EXISTS environment_context VARCHAR(160);
 
 -- AI Recommendations generated by Ollama for DANGER severity readings
 CREATE TABLE IF NOT EXISTS ai_recommendations (
@@ -126,6 +91,7 @@ CREATE TABLE IF NOT EXISTS ai_recommendations (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     diagnostic_id INTEGER NOT NULL REFERENCES ai_diagnostics(id) ON DELETE CASCADE,
     reading_id BIGINT NOT NULL REFERENCES sensor_readings(id) ON DELETE CASCADE,
+    ollama_prompt TEXT NOT NULL,
     ai_response TEXT NOT NULL,
     recommendation_title VARCHAR(255),
     recommendation_text TEXT,
@@ -138,11 +104,11 @@ CREATE TABLE IF NOT EXISTS ai_recommendations (
 );
 
 -- Environment profile by user (supports context-aware diagnostics)
-\r\n-- Environment profile by user (supports context-aware diagnostics)
 CREATE TABLE IF NOT EXISTS environment_profiles (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     profile_name VARCHAR(100) NOT NULL DEFAULT 'Principal',
+    area_type VARCHAR(20) NOT NULL DEFAULT 'INDOOR',
     ventilation_level VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
     urban_context VARCHAR(20) NOT NULL DEFAULT 'URBAN',
     notes TEXT,
@@ -155,6 +121,7 @@ CREATE TABLE IF NOT EXISTS device_environment_assignments (
     id SERIAL PRIMARY KEY,
     device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     environment_profile_id INTEGER NOT NULL REFERENCES environment_profiles(id) ON DELETE CASCADE,
+    assigned_to TIMESTAMP WITH TIME ZONE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
@@ -163,6 +130,7 @@ CREATE TABLE IF NOT EXISTS risk_assessments (
     id BIGSERIAL PRIMARY KEY,
     reading_id BIGINT NOT NULL REFERENCES sensor_readings(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pet_id INTEGER REFERENCES pets(id) ON DELETE SET NULL,
     environment_profile_id INTEGER REFERENCES environment_profiles(id) ON DELETE SET NULL,
     risk_level VARCHAR(20) NOT NULL,
     risk_score DOUBLE PRECISION NOT NULL,
@@ -178,9 +146,8 @@ CREATE TABLE IF NOT EXISTS recommendation_events (
     id BIGSERIAL PRIMARY KEY,
     risk_assessment_id BIGINT NOT NULL REFERENCES risk_assessments(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    urgency VARCHAR(20) NOT NULL,
     title VARCHAR(160) NOT NULL,
-    message TEXT NOT NULL,
-    actions_json TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -199,7 +166,7 @@ CREATE TABLE IF NOT EXISTS exposure_history (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. INDEXES (Idempotentes)
+-- Indexes
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_device_id ON sensor_readings(device_id);
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_timestamp ON sensor_readings(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_device_timestamp ON sensor_readings(device_id, timestamp DESC);

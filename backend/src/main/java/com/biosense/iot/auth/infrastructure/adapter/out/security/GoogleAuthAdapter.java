@@ -23,10 +23,20 @@ public class GoogleAuthAdapter implements GoogleAuthPort {
     private static final Logger log = LoggerFactory.getLogger(GoogleAuthAdapter.class);
     private final GoogleIdTokenVerifier verifier;
 
-    public GoogleAuthAdapter(@Value("${GOOGLE_CLIENT_ID}") String clientIds) {
+    public GoogleAuthAdapter(@Value("${google.client.ids:${GOOGLE_CLIENT_ID:}}") String clientIds) {
+        if (clientIds == null || clientIds.isBlank()) {
+            throw new IllegalStateException(
+                    "Google client ID no configurado. Define GOOGLE_CLIENT_ID o google.client.ids.");
+        }
+
         List<String> audiences = Arrays.stream(clientIds.split(","))
                 .map(String::trim)
+                .filter(clientId -> !clientId.isBlank())
                 .toList();
+
+        if (audiences.isEmpty()) {
+            throw new IllegalStateException("Google client ID vacío. Define al menos un client ID válido.");
+        }
 
         this.verifier = new GoogleIdTokenVerifier.Builder(
                 new NetHttpTransport(),
@@ -41,17 +51,18 @@ public class GoogleAuthAdapter implements GoogleAuthPort {
             try {
                 GoogleIdToken token = verifier.verify(idToken);
                 if (token == null) {
-                    throw new AuthException("Token de Google inválido (verify null)");
+                    throw new AuthException("Token de Google inválido o emitido para otra audiencia");
                 }
                 GoogleIdToken.Payload payload = token.getPayload();
                 return new GoogleIdentity(
                         payload.getSubject(),
                         payload.getEmail(),
-                        (String) payload.get("name")
-                );
+                        (String) payload.get("name"));
+            } catch (AuthException e) {
+                throw e;
             } catch (Exception e) {
                 log.error("Fallo en adaptador de Google Auth", e);
-                throw new AuthException("Error crítico validando con Google");
+                throw new AuthException("Error validando con Google: " + e.getMessage());
             }
         }).subscribeOn(Schedulers.boundedElastic());
     }

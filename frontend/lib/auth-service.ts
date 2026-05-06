@@ -3,10 +3,15 @@ import { AuthResponse } from './types';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { API_V2_URL } from './api-config';
 
+const GOOGLE_CLIENT_ID =
+  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ??
+  process.env.GOOGLE_CLIENT_ID ??
+  '669903110693-3f1lt6ci39go17j1hsutaeabrt36utq0.apps.googleusercontent.com';
+
 // Inicializar de forma segura solo en el cliente
 if (typeof window !== 'undefined') {
   (GoogleAuth.initialize({
-    clientId: '669903110693-3f1lt6ci39go17j1hsutaeabrt36utq0.apps.googleusercontent.com',
+    clientId: GOOGLE_CLIENT_ID,
     scopes: ['profile', 'email'],
     grantOfflineAccess: true,
   }) as any).catch((err: any) => {
@@ -282,7 +287,7 @@ export class AuthService {
       return await this.sendTokenToBackend(idToken);
     } catch (error: any) {
       console.error('Error GoogleAuth:', error);
-      throw new Error(`Google Login Falló`);
+      throw new Error(error?.message || 'Google Login Falló');
     }
   }
 
