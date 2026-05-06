@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { 
-  Lightbulb, 
+import {
+  Lightbulb,
   Sparkles,
   AlertTriangle,
   Zap
@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button"
 import { useAiRecommendation } from "@/hooks/use-ai-recommendation"
 import { useDiagnostics } from "@/hooks/use-diagnostics"
 import { getRecentRecommendations } from "@/lib/ai-recommendation-service"
-import { AiRecommendationCard } from "./cards/ai-recommendation-card"
+// import { AiRecommendationCard } from "./cards/ai-recommendation-card"
+import { AiRecommendationCard } from "@/components/iot/premium/cards/ai-recommendation-card"
 import { AiRecommendation } from "@/lib/types"
 
 interface RecommendationsViewProps {
@@ -27,12 +28,12 @@ interface RecommendationsViewProps {
  */
 export function RecommendationsView({ onNavigateToAlerts }: RecommendationsViewProps) {
   // Obtener diagnóstico actual para saber si hay alerta roja
-  const { data: diagnostic } = useDiagnostics()
+  const { diagnostic } = useDiagnostics()
   const isRedAlert = diagnostic?.riskLevel === "DANGER"
-  
+
   // Hook para recomendación IA actual
   const aiRec = useAiRecommendation({ isRedAlert })
-  
+
   // Estado para historial de recomendaciones
   const [recent, setRecent] = useState<AiRecommendation[]>([])
   const [recentLoading, setRecentLoading] = useState(false)

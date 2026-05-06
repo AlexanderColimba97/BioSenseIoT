@@ -1,7 +1,6 @@
 package com.biosense.iot.ai.infrastructure.adapter.out;
 
 import com.biosense.iot.ai.domain.port.out.OllamaClientPort;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,22 +13,25 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 import java.util.Map;
 
-@Component
-@RequiredArgsConstructor
+@Component // ← se mantiene
+// @RequiredArgsConstructor ← ELIMINAR esta línea
 public class OllamaHttpClient implements OllamaClientPort {
 
     private static final Logger log = LoggerFactory.getLogger(OllamaHttpClient.class);
 
     private final WebClient webClient;
+    private final String model;
+    private final long timeoutMs;
 
-    @Value("${ollama.model:}")
-    private String model;
+    // UN SOLO constructor — Spring lo inyecta automáticamente
+    public OllamaHttpClient(
+            @Value("${ollama.base-url:http://localhost:11434}") String ollamaUrl,
+            @Value("${ollama.model:llama3.2}") String model,
+            @Value("${ollama.timeout-ms:30000}") long timeoutMs) {
 
-    @Value("${ollama.timeout-ms:10000}")
-    private long timeoutMs;
-
-    public OllamaHttpClient(@Value("${ollama.url:http://localhost:11434}") String ollamaUrl) {
         this.webClient = WebClient.builder().baseUrl(ollamaUrl).build();
+        this.model = model;
+        this.timeoutMs = timeoutMs;
     }
 
     @Override
@@ -37,8 +39,9 @@ public class OllamaHttpClient implements OllamaClientPort {
         log.info("[OLLAMA] Sending prompt (len={})", prompt.length());
 
         Map<String, Object> body = Map.of(
-                "model", model == null || model.isBlank() ? "llama2" : model,
-                "prompt", prompt);
+                "model", model,
+                "prompt", prompt,
+                "stream", false);
 
         return webClient.post()
                 .uri("/api/generate")
